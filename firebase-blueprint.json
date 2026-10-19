@@ -1,0 +1,28 @@
+{
+  "entities": {
+    "User": {
+      "path": "users/{userId}",
+      "fields": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "phone": { "type": "string" },
+        "clubName": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "activationCode": { "type": "string" },
+        "isPro": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "UserMatch": {
+      "path": "users/{userId}/matches/{matchId}",
+      "fields": {
+        "userId": { "type": "string" },
+        "id": { "type": "string" },
+        "details": { "type": "string" },
+        "score": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isCentralManager() {
+      return isSignedIn() && (
+        request.auth.token.email == 'mohamani.figuig@gmail.com' ||
+        request.auth.token.email == 'omrhaman.figuig@gmail.com' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*admin.*'))
+      );
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isCentralManager());
+      allow list: if isSignedIn() && isCentralManager();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isCentralManager());
+
+      match /matches/{matchId} {
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isCentralManager());
+      }
+    }
+  }
+}

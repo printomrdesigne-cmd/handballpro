@@ -1,0 +1,6 @@
+{
+  "name": "formation HandManager Pro5",
+  "description": "Une application professionnelle de gestion de matchs de handball avec suivi des scores, sanctions (cartons jaunes, rouges, 2 minutes) et gestion intelligente des temps morts selon les règles officielles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
