@@ -832,7 +832,7 @@ export const MatchSheet: React.FC<{
             dir={isRtl ? 'rtl' : 'ltr'}
           >
         <div>
-          <SheetHeader details={match.details} lang={currentLang} />
+          <SheetHeader details={match.details} lang={currentLang} onOpenSettings={() => setShowSettingsModal(true)} />
           <MatchInfo details={match.details} lang={currentLang} />
           <ScoreTable match={match} lang={currentLang} />
 
