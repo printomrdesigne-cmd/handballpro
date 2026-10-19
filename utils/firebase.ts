@@ -96,7 +96,7 @@ export const subscribeToAuth = (callback: (user: FirebaseUser | null) => void) =
 };
 
 export const loginWithEmail = async (email: string, pass: string): Promise<UserProfile> => {
-  const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+  const cred = await signInWithEmailAndPassword(auth, email.trim(), pass.trim());
   let existingProfile: UserProfile | null = null;
   try {
     const userDoc = await getDoc(doc(db, 'users', cred.user.uid));
@@ -202,7 +202,7 @@ export const registerWithEmail = async (
   clubName?: string,
   activationCode?: string
 ): Promise<UserProfile> => {
-  const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+  const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass.trim());
   
   if (displayName) {
     try {

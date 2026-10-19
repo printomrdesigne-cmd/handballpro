@@ -143,14 +143,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     } catch (err: any) {
       console.error(err);
       let msg = lang === 'ar' ? 'حدث خطأ أثناء الاتصال. يرجى التحقق من البيانات المدخلة.' : 'Une erreur s\'est produite.';
+      if (err.code) {
+        msg += ` (${err.code})`;
+      }
       if (err.code === 'auth/operation-not-allowed') {
         msg = lang === 'ar'
           ? 'تنبيه: ميزة تسجيل الدخول بالبريد وكلمة المرور غير مفعلة في مشروع Firebase. يرجى تفعيلها من لوحة تحكم Firebase (Authentication -> Sign-in method) أو استخدام زر تسجيل الدخول السريع بواسطة Google أدناه.'
           : 'Erreur: La connexion par email/mot de passe n\'est pas activée dans Firebase. Veuillez l\'activer dans la console Firebase ou utiliser Google.';
       } else if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
         msg = lang === 'ar' 
-          ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة، أو ربما لم تقم بفتح حساب بعد.' 
-          : 'Email ou mot de passe incorrect, ou vous n\'avez pas encore créé de compte.';
+          ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة. يرجى التأكد من البيانات، أو قم بفتح حساب جديد، أو استخدم خاصية استعادة كلمة المرور إذا كنت تملك حساباً سابقاً.' 
+          : 'Email ou mot de passe incorrect. Veuillez vérifier vos identifiants, créer un compte, ou réinitialiser votre mot de passe.';
         setSuggestRegister(true);
       } else if (err.code === 'auth/email-already-in-use') {
         setIsEmailInUse(true);
@@ -639,7 +642,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     type="email"
                     required
                     value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    onChange={e => setEmail(e.target.value.trim())}
                     placeholder="professeur@example.com"
                     dir="ltr"
                     className={`w-full p-3 rounded-xl border-2 font-bold outline-none text-xs sm:text-sm text-left ${isRtl ? 'pl-10 pr-3' : 'pr-10 pl-3'} ${
@@ -662,7 +665,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     minLength={6}
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={e => setPassword(e.target.value.trim())}
                     placeholder="••••••••"
                     dir="ltr"
                     className={`w-full p-3 rounded-xl border-2 font-bold outline-none text-xs sm:text-sm text-left ${isRtl ? 'pl-10 pr-3' : 'pr-10 pl-3'} ${
