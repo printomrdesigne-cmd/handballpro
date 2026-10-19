@@ -97,6 +97,7 @@ const App: React.FC = () => {
   // User Account (Firebase Auth) State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register'>('login');
   const isCentralManager = isCentralManagerEmail(currentUser?.email);
   const isAccountActive = Boolean(currentUser?.isActive || currentUser?.isPro || subscription.isPro);
 
@@ -1537,6 +1538,7 @@ const App: React.FC = () => {
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         currentUser={currentUser}
+        initialMode={authModalInitialMode}
         onAuthSuccess={(profile) => {
           setCurrentUser(profile);
           if (profile?.isActive) {
@@ -1587,12 +1589,13 @@ const App: React.FC = () => {
               <button
                 onClick={() => {
                   setShowActivationGate(false);
+                  setAuthModalInitialMode('register');
                   setShowAuthModal(true);
                 }}
                 className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
               >
                 <User size={18} />
-                <span>{t.loginOrRegister}</span>
+                <span>{lang === 'ar' ? 'فتح حساب جديد وتفعيل الكود' : t.loginOrRegister}</span>
               </button>
 
               <button

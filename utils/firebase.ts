@@ -135,7 +135,8 @@ export const registerWithEmail = async (
   pass: string, 
   displayName: string, 
   phone: string,
-  clubName?: string
+  clubName?: string,
+  activationCode?: string
 ): Promise<UserProfile> => {
   const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
   
@@ -148,6 +149,20 @@ export const registerWithEmail = async (
   }
 
   const isManager = isCentralManagerEmail(email);
+  const cleanCode = (activationCode || '').trim().toUpperCase();
+  const isValidCode = Boolean(
+    cleanCode && (
+      cleanCode === 'HAND-2026' || 
+      cleanCode.startsWith('ACT-') || 
+      cleanCode.startsWith('HBM-') || 
+      cleanCode.startsWith('PRO-')
+    )
+  );
+
+  const isActivated = isManager || isValidCode;
+
+  const defaultExpiry = new Date();
+  defaultExpiry.setFullYear(defaultExpiry.getFullYear() + 1);
 
   const profile: UserProfile = {
     uid: cred.user.uid,
@@ -155,10 +170,12 @@ export const registerWithEmail = async (
     displayName: displayName.trim() || email.split('@')[0],
     phone: phone.trim(),
     clubName: clubName?.trim() || '',
-    isActive: isManager, // Pending manual activation by Central Manager unless manager
-    isPro: isManager,
+    isActive: isActivated, // Activated immediately if valid code is supplied or if manager
+    isPro: isActivated,
     subscriptionPrice: ANNUAL_SUBSCRIPTION_PRICE,
-    activationCode: '',
+    activationCode: cleanCode || '',
+    licenseKey: isActivated ? (cleanCode || 'ACTIVE') : '',
+    subscriptionExpiresAt: isActivated ? defaultExpiry.toISOString() : undefined,
     createdAt: new Date().toISOString()
   };
 

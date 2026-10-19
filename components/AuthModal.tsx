@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   loginWithEmail, 
   registerWithEmail, 
@@ -22,7 +22,7 @@ import {
   KeyRound, 
   Clock, 
   MessageSquare, 
-  ShieldAlert,
+  Sparkles,
   Crown
 } from 'lucide-react';
 import { AppLanguage } from '../types.ts';
@@ -35,6 +35,7 @@ interface AuthModalProps {
   onOpenCentralManager?: () => void;
   isDarkMode: boolean;
   lang?: AppLanguage;
+  initialMode?: 'login' | 'register';
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -44,9 +45,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onAuthSuccess,
   onOpenCentralManager,
   isDarkMode,
-  lang = 'ar'
+  lang = 'ar',
+  initialMode = 'login'
 }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -58,6 +60,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isEmailInUse, setIsEmailInUse] = useState(false);
+  const [suggestRegister, setSuggestRegister] = useState(false);
+
+  useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+    }
+  }, [initialMode, isOpen]);
 
   if (!isOpen) return null;
 
@@ -69,6 +78,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
     setIsEmailInUse(false);
+    setSuggestRegister(false);
     setLoading(true);
 
     try {
@@ -88,18 +98,38 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         if (!phone.trim()) {
           throw new Error(lang === 'ar' ? 'يرجى إدخال رقم الهاتف لاستلام كود التفعيل عبر الواتساب' : 'Veuillez saisir votre numéro WhatsApp pour recevoir le code');
         }
-        const profile = await registerWithEmail(email, password, displayName, phone, clubName);
-        onAuthSuccess(profile);
-        setSuccessMsg(lang === 'ar' 
-          ? 'تم تسجيل طلبك بنجاح! سيتم إرسال كود التفعيل عبر الواتساب قريباً.' 
-          : 'Demande enregistrée ! Votre code d\'activation WhatsApp vous sera envoyé sous peu.'
+
+        const profile = await registerWithEmail(
+          email, 
+          password, 
+          displayName, 
+          phone, 
+          clubName,
+          activationCodeInput
         );
+        onAuthSuccess(profile);
+
+        if (profile.isActive) {
+          setSuccessMsg(lang === 'ar' 
+            ? 'تهانينا! تم فتح وتفعيل حسابك بنجاح بكود التفعيل السنوي. مرحباً بك!' 
+            : 'Félicitations ! Votre compte est créé et activé avec succès.'
+          );
+          setTimeout(() => onClose(), 1500);
+        } else {
+          setSuccessMsg(lang === 'ar' 
+            ? 'تم فتح حسابك بنجاح! سيقوم المسير المركزي بإرسال كود التفعيل الخاص بك عبر الواتساب قريباً.' 
+            : 'Compte créé avec succès ! Votre code d\'activation WhatsApp vous sera envoyé sous peu.'
+          );
+        }
       }
     } catch (err: any) {
       console.error(err);
       let msg = lang === 'ar' ? 'حدث خطأ أثناء الاتصال. يرجى التحقق من البيانات المدخلة.' : 'Une erreur s\'est produite.';
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
-        msg = lang === 'ar' ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة.' : 'Email ou mot de passe incorrect.';
+        msg = lang === 'ar' 
+          ? 'البريد الإلكتروني أو كلمة المرور غير صحيحة، أو ربما لم تقم بفتح حساب بعد.' 
+          : 'Email ou mot de passe incorrect, ou vous n\'avez pas encore créé de compte.';
+        setSuggestRegister(true);
       } else if (err.code === 'auth/email-already-in-use') {
         setIsEmailInUse(true);
         msg = lang === 'ar' 
@@ -319,25 +349,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         ) : (
           /* Login / Register Form */
           <div>
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 rounded-3xl bg-blue-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-blue-600/30 mb-3 rotate-3">
-                <Lock size={30} strokeWidth={2.5} />
+            <div className="text-center mb-5">
+              <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center mx-auto shadow-lg shadow-blue-600/30 mb-3 rotate-2">
+                {mode === 'register' ? <KeyRound size={26} strokeWidth={2.5} /> : <Lock size={26} strokeWidth={2.5} />}
               </div>
-              <h3 className="text-2xl font-black">
-                {mode === 'login' ? 'تسجيل دخول الأساتذة' : 'استمارة تسجيل حساب جديد'}
+              <h3 className="text-xl sm:text-2xl font-black">
+                {mode === 'login' ? 'تسجيل دخول الأساتذة' : 'فتح حساب جديد وتفعيل الكود'}
               </h3>
               <p className="text-xs text-slate-500 font-bold mt-1 max-w-xs mx-auto">
                 {mode === 'login' 
                   ? 'سجّل الدخول للوصول إلى نسختك ومبارياتك المحمية' 
-                  : 'املأ الاستمارة ليقوم المسير المركزي بإرسال كود التفعيل لك عبر الواتساب'}
+                  : 'أدخل كود التفعيل إذا كان لديك، أو املأ الاستمارة لاستلام كودك عبر الواتساب'}
               </p>
             </div>
 
             {/* Mode switch */}
-            <div className={`p-1 rounded-2xl flex gap-1 mb-5 border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+            <div className={`p-1 rounded-2xl flex gap-1 mb-4 border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
               <button
                 type="button"
-                onClick={() => { setMode('login'); setErrorMsg(null); setSuccessMsg(null); setIsEmailInUse(false); }}
+                onClick={() => { setMode('login'); setErrorMsg(null); setSuccessMsg(null); setIsEmailInUse(false); setSuggestRegister(false); }}
                 className={`flex-1 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
                   mode === 'login' 
                     ? 'bg-blue-600 text-white shadow-md' 
@@ -348,16 +378,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => { setMode('register'); setErrorMsg(null); setSuccessMsg(null); setIsEmailInUse(false); }}
+                onClick={() => { setMode('register'); setErrorMsg(null); setSuccessMsg(null); setIsEmailInUse(false); setSuggestRegister(false); }}
                 className={`flex-1 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
                   mode === 'register' 
                     ? 'bg-blue-600 text-white shadow-md' 
                     : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
-                تسجيل حساب جديد
+                فتح حساب جديد
               </button>
             </div>
+
+            {/* In Login mode: helper callout for first-time visitors */}
+            {mode === 'login' && (
+              <div className={`p-3 rounded-2xl border-2 mb-4 text-start flex items-center justify-between gap-2.5 transition-all ${
+                isDarkMode ? 'bg-blue-950/20 border-blue-500/30 text-blue-200' : 'bg-blue-50 border-blue-200 text-blue-950 shadow-sm'
+              }`}>
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-black text-xs text-blue-600 dark:text-blue-400">
+                    <Sparkles size={14} className="text-amber-500 shrink-0" />
+                    <span>أول مرة تفتح حساباً أو تملك كود تفعيل؟</span>
+                  </div>
+                  <p className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400">
+                    انقر هنا لإدخال كود التفعيل أو طلب فتح حساب جديد
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMode('register'); setErrorMsg(null); setSuggestRegister(false); }}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs rounded-xl shadow-md transition-all shrink-0 cursor-pointer"
+                >
+                  فتح حساب جديد
+                </button>
+              </div>
+            )}
 
             {/* Alerts */}
             {errorMsg && (
@@ -375,6 +429,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     انقر هنا لتسجيل الدخول بهذا البريد
                   </button>
                 )}
+                {suggestRegister && (
+                  <button
+                    type="button"
+                    onClick={() => { setMode('register'); setErrorMsg(null); setSuggestRegister(false); }}
+                    className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow transition-all cursor-pointer text-center flex items-center justify-center gap-1.5"
+                  >
+                    <KeyRound size={14} />
+                    <span>انقر هنا لفتح حساب جديد وتفعيل الكود</span>
+                  </button>
+                )}
               </div>
             )}
             {successMsg && (
@@ -387,28 +451,70 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-3.5">
               {mode === 'register' && (
                 <>
-                  {/* Annual Subscription Fee Notice (ثمن الاشتراك السنوي 30 درهم) */}
+                  {/* PROMINENT ACTIVATION CODE FIELD FOR FIRST TIME ACCOUNTS */}
                   <div className={`p-4 rounded-2xl border-2 mb-2 text-start transition-all ${
-                    isDarkMode 
-                      ? 'bg-gradient-to-r from-amber-950/40 via-yellow-950/20 to-slate-900 border-amber-500/50 text-amber-200' 
-                      : 'bg-gradient-to-r from-amber-50 via-yellow-50/60 to-amber-100/50 border-amber-400 text-amber-950 shadow-sm'
+                    activationCodeInput.trim() 
+                      ? 'bg-emerald-500/10 border-emerald-500/60 shadow-sm' 
+                      : (isDarkMode ? 'bg-slate-950/70 border-amber-500/40 text-amber-200' : 'bg-amber-50/90 border-amber-400 text-amber-950 shadow-sm')
                   }`}>
-                    <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">💰</span>
-                        <span className="font-black text-sm text-amber-600 dark:text-amber-400">
-                          {lang === 'ar' ? 'ثمن الاشتراك السنوي:' : 'Tarif de l\'abonnement annuel :'}
-                        </span>
-                      </div>
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20">
-                        <span>{lang === 'ar' ? '30 درهم مغربي فقط' : '30 DH seulement'}</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-black flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                        <KeyRound size={16} className="text-amber-500" />
+                        <span>كود تفعيل الحساب (Activation Code)</span>
+                      </label>
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border ${
+                        activationCodeInput.trim() 
+                          ? 'bg-emerald-500 text-white border-emerald-600 shadow-sm' 
+                          : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                      }`}>
+                        {activationCodeInput.trim() ? '✓ تم إدخال الكود' : 'اختياري إذا توفر'}
                       </span>
                     </div>
-                    <p className="text-[11px] font-bold leading-relaxed text-slate-700 dark:text-slate-300">
-                      {lang === 'ar'
-                        ? 'رسوم رمزية قدرها 30 درهماً سنوياً تتيح لك الاستفادة الكاملة من كافة مميزات التطبيق، إدارة وتحكيم المباريات بدون إنترنت، استخراج ورقة المباراة الرسمية A4، وتحديثات طيلة الموسم الرياضي. يتم تفعيل وتجديد الحساب يدوياً من طرف المسير المركزي عبر إرسال كود خاص على رقم الواتساب المسجل.'
-                        : 'Un tarif symbolique de 30 DH par an donne un accès illimité à toutes les fonctionnalités. L\'activation et le renouvellement se font manuellement par le gestionnaire central via WhatsApp.'}
-                    </p>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={activationCodeInput}
+                        onChange={e => setActivationCodeInput(e.target.value.toUpperCase())}
+                        placeholder="أدخل كود التفعيل هنا (مثال: HBM-7491 أو ACT-2026)"
+                        className={`w-full p-3 rounded-xl border-2 font-mono font-black text-xs uppercase outline-none transition-all ${isRtl ? 'pr-3 pl-10' : 'pl-3 pr-10'} ${
+                          activationCodeInput.trim()
+                            ? 'bg-white dark:bg-slate-900 border-emerald-500 text-emerald-600 dark:text-emerald-400'
+                            : (isDarkMode ? 'bg-slate-900 border-slate-700 text-white focus:border-amber-500' : 'bg-white border-slate-300 text-slate-900 focus:border-amber-500')
+                        }`}
+                      />
+                      <KeyRound className={`absolute ${isRtl ? 'left-3' : 'right-3'} top-3.5 text-amber-500`} size={17} />
+                    </div>
+
+                    {/* Dynamic feedback: If code exists vs if user needs to request one */}
+                    {activationCodeInput.trim() ? (
+                      <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1.5">
+                        <CheckCircle2 size={14} className="shrink-0" />
+                        <span>سيتم تفعيل حسابك فوراً بمجرد تأكيد فتح الحساب أدناه!</span>
+                      </p>
+                    ) : (
+                      <div className="mt-2 text-[11px] font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                        <p>
+                          💡 <strong>ليس لديك كود تفعيل بعد؟</strong> لا تقلق، تابع ملء بياناتك أدناه (الاسم، الهاتف، المؤسسة) وسيقوم المسير المركزي بإرسال كود التفعيل الخاص بك عبر الواتساب فور التسجيل.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Annual Subscription Fee Notice */}
+                  <div className={`p-3.5 rounded-2xl border mb-2 text-start transition-all ${
+                    isDarkMode 
+                      ? 'bg-slate-950/40 border-slate-800 text-slate-300' 
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-black text-xs text-amber-600 dark:text-amber-400">
+                        {lang === 'ar' ? '💰 ثمن الاشتراك السنوي:' : 'Tarif annuel :'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-500 text-slate-950">
+                        <span>{lang === 'ar' ? '30 درهم مغربي فقط' : '30 DH'}</span>
+                      </span>
+                    </div>
                   </div>
 
                   <div>
@@ -524,23 +630,52 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 mt-2 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-2xl shadow-xl shadow-blue-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                className={`w-full py-3.5 mt-2 text-white font-black text-sm rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer ${
+                  mode === 'register' && activationCodeInput.trim()
+                    ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
+                    : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
+                }`}
               >
                 {loading ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
                     <span>جاري المعالجة...</span>
                   </>
+                ) : mode === 'login' ? (
+                  <span>تسجيل الدخول</span>
+                ) : activationCodeInput.trim() ? (
+                  <>
+                    <KeyRound size={17} />
+                    <span>تأكيد فتح الحساب وتفعيله بالكود فوراً</span>
+                  </>
                 ) : (
-                  <span>{mode === 'login' ? 'تسجيل الدخول' : 'إرسال طلب التسجيل وتأكيد البيانات'}</span>
+                  <>
+                    <Sparkles size={17} />
+                    <span>فتح حساب جديد وطلب كود التفعيل</span>
+                  </>
                 )}
               </button>
             </form>
 
-            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 text-center space-y-1">
-              <p className="text-[11px] font-black text-amber-600 dark:text-amber-400">
-                💰 ثمن الاشتراك السنوي: 30 درهم مغربي فقط
-              </p>
+            <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-800 text-center space-y-1.5">
+              {mode === 'login' ? (
+                <button
+                  type="button"
+                  onClick={() => { setMode('register'); setErrorMsg(null); }}
+                  className="text-xs font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                >
+                  ليس لديك حساب بعد؟ انقر هنا لفتح حساب جديد وتفعيل الكود
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setMode('login'); setErrorMsg(null); }}
+                  className="text-xs font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                >
+                  لديك حساب بالفعل؟ تسجيل الدخول من هنا
+                </button>
+              )}
+
               <p className="text-[11px] font-bold text-slate-400">
                 🔒 يتم التفعيل وتجديد الانخراط يدوياً من طرف المسير المركزي عبر إرسال كود خاص بالواتساب
               </p>
