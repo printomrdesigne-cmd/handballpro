@@ -2,6 +2,7 @@ import React from 'react';
 import { ScheduledMatch, AppLanguage } from '../types.ts';
 import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
 import { translations } from '../utils/translations.ts';
+import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface SetupChoiceProps {
   schedule: ScheduledMatch[];
@@ -104,6 +105,9 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
           </div>
         </div>
       )}
+
+      {/* PWA Mobile App Installation Card */}
+      <PWAInstallButton lang={lang} variant="card" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Option: Manual Setup */}

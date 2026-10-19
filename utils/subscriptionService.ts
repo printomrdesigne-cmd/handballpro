@@ -1,5 +1,7 @@
 import { SubscriptionPlan, SubscriptionState } from '../types.ts';
 
+export type { SubscriptionState };
+
 export const STORE_URL = 'https://handballscore.appsports.store/';
 
 export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [

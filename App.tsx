@@ -16,6 +16,8 @@ import { getDemoMatch } from './utils/demoMatch.ts';
 import { getSubscriptionState, SubscriptionState } from './utils/subscriptionService.ts';
 import { subscribeToAuth, fetchUserProfile, assignUserProStatus, UserProfile, CENTRAL_MANAGER_EMAIL, isCentralManagerEmail } from './utils/firebase.ts';
 import { translations, getStoredLanguage, setStoredLanguage } from './utils/translations.ts';
+import { PWAInstallButton } from './components/PWAInstallButton.tsx';
+import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -401,11 +403,7 @@ const App: React.FC = () => {
   };
 
   const handleSettingsClick = () => {
-    if (localStorage.getItem('admin_authenticated') === 'true') {
-      setView('admin_schedule');
-    } else {
-      setShowLoginModal(true);
-    }
+    setView('admin_schedule');
   };
 
   const handleAddPlayer = (side: 'home' | 'away', number: string, name: string) => {
@@ -1141,6 +1139,11 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
+                {/* PWA Phone Installation in Menu */}
+                <div className="pb-1">
+                  <PWAInstallButton lang={lang} variant="menu" />
+                </div>
+
                 {/* Match Controls if Active */}
                 {match && (
                   <>
@@ -1238,6 +1241,9 @@ const App: React.FC = () => {
             <User size={14} />
             <span className="hidden sm:inline truncate max-w-[90px]">{currentUser ? (currentUser.displayName || currentUser.email.split('@')[0]) : t.login}</span>
           </button>
+
+          {/* Install on Phone Button */}
+          <PWAInstallButton lang={lang} variant="header" />
 
           {/* Activation button: ONLY show if account is NOT active and NOT central manager */}
           {!isAccountActive && !isCentralManager && (
@@ -1624,6 +1630,9 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
+      
+      {/* Offline Status & Connectivity Monitor */}
+      <OfflineIndicator lang={lang} />
     </div>
   );
 };

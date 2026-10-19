@@ -6,6 +6,8 @@ import {
   signOut, 
   onAuthStateChanged,
   updateProfile,
+  signInWithPopup,
+  GoogleAuthProvider,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -15,7 +17,8 @@ import {
   setDoc, 
   updateDoc, 
   collection,
-  getDocs
+  getDocs,
+  getDocFromServer
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -23,8 +26,21 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
 
-export const CENTRAL_MANAGER_EMAIL = 'mohamani.figuig@gmail.com';
+// Validate connection to Firestore as required by Firebase skill
+export async function testFirestoreConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn('Firestore offline / cached mode active.');
+    }
+  }
+}
+testFirestoreConnection();
+
+export const CENTRAL_MANAGER_EMAIL = 'printomrdesigne@gmail.com';
 export const CENTRAL_MANAGER_EMAILS = [
+  'printomrdesigne@gmail.com',
   'mohamani.figuig@gmail.com',
   'omrhaman.figuig@gmail.com'
 ];
@@ -128,6 +144,54 @@ export const loginWithEmail = async (email: string, pass: string): Promise<UserP
   const allCached = getCachedUsers();
   saveCachedUsers([...allCached.filter(u => u.uid !== profile.uid), profile]);
   return profile;
+};
+
+export const loginWithGoogle = async (): Promise<UserProfile> => {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+  const cred = await signInWithPopup(auth, provider);
+  
+  let existingProfile = await fetchUserProfile(cred.user.uid);
+  if (!existingProfile && cred.user.email) {
+    const cachedByEmail = getCachedUsers().find(u => u.email.toLowerCase() === cred.user.email!.toLowerCase());
+    if (cachedByEmail) {
+      existingProfile = cachedByEmail;
+    }
+  }
+
+  const isManager = isCentralManagerEmail(cred.user.email);
+
+  if (!existingProfile && !isManager) {
+    await signOut(auth);
+    throw new Error('هذا البريد الإلكتروني غير مسجل مسبقاً. يرجى فتح حساب جديد أولاً قبل استخدام تسجيل الدخول السريع.');
+  }
+
+  if (!existingProfile && isManager) {
+    existingProfile = {
+      uid: cred.user.uid,
+      email: cred.user.email || '',
+      displayName: cred.user.displayName || (cred.user.email ? cred.user.email.split('@')[0] : 'مشترك'),
+      phone: cred.user.phoneNumber || '',
+      isActive: true,
+      isPro: true,
+      subscriptionPrice: ANNUAL_SUBSCRIPTION_PRICE,
+      createdAt: new Date().toISOString()
+    };
+    try {
+      await setDoc(doc(db, 'users', cred.user.uid), existingProfile);
+    } catch (e) {
+      console.warn('Could not save Google profile to Firestore', e);
+    }
+    const allCached = getCachedUsers();
+    saveCachedUsers([...allCached.filter(u => u.uid !== existingProfile!.uid), existingProfile]);
+  }
+
+  if (existingProfile && isManager) {
+    existingProfile.isActive = true;
+    existingProfile.isPro = true;
+  }
+
+  return existingProfile;
 };
 
 export const registerWithEmail = async (

@@ -6,6 +6,10 @@ import { captureElementAsImage, shareMatchSheetImage, downloadImageFile, copyIma
 import { SignaturePad } from './SignaturePad.tsx';
 import { translations } from '../utils/translations.ts';
 
+import { SheetSettings, getSheetSettings } from '../utils/sheetSettings.ts';
+import { SettingsModal } from './SettingsModal.tsx';
+import { Settings as SettingsIcon } from 'lucide-react';
+
 // Force load fonts
 const ensureFonts = () => {
   if (!document.querySelector('link[href*="Cairo"]')) {
@@ -19,39 +23,62 @@ const ensureFonts = () => {
 interface SheetHeaderProps {
   details: any;
   lang: AppLanguage;
+  sheetSettings?: SheetSettings;
+  onOpenSettings?: () => void;
 }
 
-const SheetHeader = ({ details, lang }: SheetHeaderProps) => {
+const SheetHeader = ({ details, lang, sheetSettings, onOpenSettings }: SheetHeaderProps) => {
   const t = translations[lang];
   const isRtl = lang === 'ar';
+  const effective = sheetSettings || getSheetSettings();
+
+  const logoSrc = effective.logoUrl || '/logo_frmss.png';
+  const mainTitleAr = effective.mainTitleAr || 'الجامعة الملكية المغربية\nللرياضة المدرسية';
+  const mainTitleFr = effective.mainTitleFr || 'FÉDÉRATION ROYALE MAROCAINE\nDU SPORT SCOLAIRE';
+  const academyName = details.aref || effective.academy || '-';
+  const directionName = details.direction || effective.direction || '-';
+  const competitionName = details.competition || effective.competition || t.sheetCompetition;
 
   return (
-    <div className="border-2 border-black mb-1 font-sans text-black" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="border-2 border-black mb-1 font-sans text-black relative group" dir={isRtl ? 'rtl' : 'ltr'}>
+      {/* Quick edit button for header (hidden in print) */}
+      {onOpenSettings && (
+        <button
+          onClick={onOpenSettings}
+          data-html2canvas-ignore="true"
+          className="absolute -top-3.5 left-2 px-2.5 py-0.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] rounded-md shadow flex items-center gap-1 print:hidden opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer"
+          title="تعديل الشعار والعناوين"
+        >
+          <SettingsIcon size={11} />
+          <span>تعديل الشعار والعناوين</span>
+        </button>
+      )}
+
       {/* LOGOS & TITLES */}
       <div className="flex border-b-2 border-black h-20">
         {/* Side 1: Arabic Title */}
         <div className={`w-1/3 flex items-center justify-center text-center p-1 bg-white ${isRtl ? 'border-l-2' : 'border-r-2'} border-black`}>
-          <h1 className="text-sm font-black leading-tight text-green-900" style={{ fontFamily: "'Cairo', sans-serif", letterSpacing: 'normal' }}>
-            الجامعة الملكية المغربية<br/>للرياضة المدرسية
+          <h1 className="text-sm font-black leading-tight text-green-900 whitespace-pre-line" style={{ fontFamily: "'Cairo', sans-serif", letterSpacing: 'normal' }}>
+            {mainTitleAr}
           </h1>
         </div>
 
-        {/* Center: Official Logo */}
-        <div className="w-1/3 flex items-center justify-center p-1 bg-white">
+        {/* Center: Official or Custom Logo */}
+        <div className="w-1/3 flex items-center justify-center p-1 bg-white overflow-hidden">
           <img
-            src="/logo_frmss.png"
+            src={logoSrc}
             onError={(e) => {
               (e.target as HTMLImageElement).src = 'https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=200&output=png';
             }}
-            alt="Logo FRMSS"
-            className="h-16 object-contain"
+            alt="Logo"
+            className="h-16 max-w-full object-contain"
           />
         </div>
 
         {/* Side 2: French / International Title */}
         <div className={`w-1/3 flex items-center justify-center text-center p-1 bg-white ${isRtl ? 'border-r-2' : 'border-l-2'} border-black`}>
-          <h2 className="text-[8px] font-black uppercase leading-relaxed text-green-900" style={{ fontFamily: "'Inter', sans-serif", letterSpacing: 'normal' }}>
-            FÉDÉRATION ROYALE MAROCAINE<br/>DU SPORT SCOLAIRE
+          <h2 className="text-[8px] font-black uppercase leading-relaxed text-green-900 whitespace-pre-line" style={{ fontFamily: "'Inter', sans-serif", letterSpacing: 'normal' }}>
+            {mainTitleFr}
           </h2>
         </div>
       </div>
@@ -62,18 +89,18 @@ const SheetHeader = ({ details, lang }: SheetHeaderProps) => {
         <div className={`w-[42%] flex flex-col justify-center px-2 text-[9px] font-bold bg-white text-black leading-tight ${isRtl ? 'border-l-2' : 'border-r-2'} border-black`} style={{ letterSpacing: 'normal' }}>
           <div className="flex justify-between items-center border-b border-gray-300 pb-0.5 mb-0.5">
             <span className="text-gray-700 font-bold">{t.academy}:</span>
-            <span className="font-black uppercase truncate text-black">{details.aref || '-'}</span>
+            <span className="font-black uppercase truncate text-black">{academyName}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-gray-700 font-bold">{t.direction}:</span>
-            <span className="font-black uppercase truncate text-black">{details.direction || '-'}</span>
+            <span className="font-black uppercase truncate text-black">{directionName}</span>
           </div>
         </div>
 
         {/* Championship & Category Banner */}
         <div className="flex-1 flex items-center justify-center bg-green-700 print:bg-green-700 px-2 text-center">
           <span className="font-black text-xs sm:text-sm text-white drop-shadow-sm" style={{ letterSpacing: 'normal' }}>
-            {t.sheetCompetition} — {details.categorie || t.category}
+            {competitionName} — {details.categorie || t.category}
           </span>
         </div>
       </div>
@@ -305,14 +332,14 @@ const TeamRoster = ({
           </colgroup>
           <thead className="bg-gray-100 print:bg-gray-100 text-[8.5px] uppercase font-black text-black" style={{ letterSpacing: 'normal' }}>
             <tr className="h-[28.5px] border-b-2 border-black">
-              <th className="border-l border-black text-black text-center align-middle">{t.playerNumber}</th>
-              <th className="border-l border-black text-black text-center align-middle">{t.playerLicence}</th>
-              <th className={`border-l border-black text-black align-middle px-2 ${isRtl ? 'text-right' : 'text-left'}`}>{t.playerName}</th>
-              <th className="border-l border-black text-black text-center align-middle">{t.goalsCol}</th>
-              <th className="border-l border-black bg-yellow-200 print:bg-yellow-200 text-black text-center align-middle">{t.yellowCol}</th>
-              <th className="border-l border-black text-black text-center align-middle">{t.twoMinCol}</th>
-              <th className="border-l border-black bg-red-200 print:bg-red-200 text-black text-center align-middle">{t.redCol}</th>
-              <th className="bg-blue-200 print:bg-blue-200 text-black text-center align-middle">{t.blueCol}</th>
+              <th className="border-l border-black text-black text-center align-middle">{isRtl ? 'رقم' : 'N°'}</th>
+              <th className="border-l border-black text-black text-center align-middle">{isRtl ? 'رخصة' : 'Licence'}</th>
+              <th className={`border-l border-black text-black align-middle px-2 ${isRtl ? 'text-right' : 'text-left'}`}>{isRtl ? 'الاسم الكامل للّاعب' : 'Nom & Prénom du Joueur'}</th>
+              <th className="border-l border-black text-black text-center align-middle">{isRtl ? 'أهداف' : 'Buts'}</th>
+              <th className="border-l border-black bg-yellow-200 print:bg-yellow-200 text-black text-center align-middle">{isRtl ? 'إنذار' : 'Avert.'}</th>
+              <th className="border-l border-black text-black text-center align-middle">{isRtl ? '2 د' : '2 min'}</th>
+              <th className="border-l border-black bg-red-200 print:bg-red-200 text-black text-center align-middle">{isRtl ? 'طرد' : 'Disq.'}</th>
+              <th className="bg-blue-200 print:bg-blue-200 text-black text-center align-middle">{isRtl ? 'تقرير' : 'Rapp.'}</th>
             </tr>
           </thead>
           <tbody>{rows}</tbody>
@@ -455,6 +482,22 @@ export const MatchSheet: React.FC<{
   );
   const [zoomMode, setZoomMode] = useState<'fit' | 'actual'>('fit');
   const [customScale, setCustomScale] = useState<number | null>(null);
+
+  // Custom Logo and Titles Settings
+  const [sheetSettings, setSheetSettings] = useState<SheetSettings>(() => getSheetSettings());
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  useEffect(() => {
+    const handleSettingsUpdate = (e: any) => {
+      if (e.detail) {
+        setSheetSettings(e.detail);
+      } else {
+        setSheetSettings(getSheetSettings());
+      }
+    };
+    window.addEventListener('sheet-settings-updated', handleSettingsUpdate);
+    return () => window.removeEventListener('sheet-settings-updated', handleSettingsUpdate);
+  }, []);
 
   useEffect(() => {
     const handleResize = () => {
@@ -896,11 +939,6 @@ export const MatchSheet: React.FC<{
             <div data-html2canvas-ignore="true" className={`absolute ${isRtl ? 'right-0' : 'left-0'} top-0 bottom-0 w-8 flex items-center justify-center bg-blue-500/5 hover:bg-blue-500/10 transition-opacity print:hidden`}>
               <Edit2 size={12} className="text-blue-600 opacity-50 hover:opacity-100" />
             </div>
-          </div>
-
-          {/* Footer Credits */}
-          <div className="text-[8px] text-center text-black mt-1 font-bold opacity-75 flex-shrink-0">
-            {t.credits}
           </div>
         </div>
       </div>
