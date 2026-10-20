@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { MatchState, SanctionType, Player, Team, MatchEvent, MatchPeriod, AppLanguage } from '../types.ts';
-import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut, Upload, FileText, Paperclip, Trash2, ExternalLink } from 'lucide-react';
 import { generateMatchSheetPDF } from '../utils/pdfGenerator.ts';
 import { captureElementAsImage, shareMatchSheetImage, downloadImageFile, copyImageToClipboard } from '../utils/imageGenerator.ts';
 import { SignaturePad } from './SignaturePad.tsx';
@@ -35,9 +35,9 @@ const SheetHeader = ({ details, lang, sheetSettings, onOpenSettings }: SheetHead
   const logoSrc = effective.logoUrl || '/logo_frmss.png';
   const mainTitleAr = effective.mainTitleAr || 'الجامعة الملكية المغربية\nللرياضة المدرسية';
   const mainTitleFr = effective.mainTitleFr || 'FÉDÉRATION ROYALE MAROCAINE\nDU SPORT SCOLAIRE';
-  const academyName = details.aref || effective.academy || '-';
-  const directionName = details.direction || effective.direction || '-';
-  const competitionName = details.competition || effective.competition || t.sheetCompetition;
+  const academyName = effective.academy || details.aref || '-';
+  const directionName = effective.direction || details.direction || '-';
+  const competitionName = effective.competition || details.competition || t.sheetCompetition;
 
   return (
     <div className="border-2 border-black mb-1 font-sans text-black relative group" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -446,7 +446,8 @@ export const MatchSheet: React.FC<{
   onUpdate: (m: MatchState) => void;
   lang?: AppLanguage;
   onLanguageChange?: (lang: AppLanguage) => void;
-}> = ({ match, onUpdate, lang = 'ar', onLanguageChange }) => {
+  isAccountActive?: boolean;
+}> = ({ match, onUpdate, lang = 'ar', onLanguageChange, isAccountActive = false }) => {
   useEffect(() => { ensureFonts(); }, []);
 
   const [currentLang, setCurrentLang] = useState<AppLanguage>(lang);
@@ -597,6 +598,72 @@ export const MatchSheet: React.FC<{
     }
   };
 
+  const handleDownloadDirectImage = async () => {
+    try {
+      setIsCapturingImage(true);
+      await document.fonts.ready;
+      const res = await captureElementAsImage('match-sheet-content');
+      if (res) {
+        downloadImageFile(res.blob, imageFileName);
+      } else {
+        alert(currentLang === 'ar' ? 'تعذر إنشاء الصورة، يرجى المحاولة مرة أخرى' : 'Échec de la capture');
+      }
+    } catch (e) {
+      console.error('Direct image download failed', e);
+    } finally {
+      setIsCapturingImage(false);
+    }
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedDoc, setAttachedDoc] = useState<{ name: string; type: 'image' | 'pdf'; dataUrl: string; size: string } | null>(() => {
+    try {
+      const stored = localStorage.getItem(`match_doc_${match.id}`);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [showDocModal, setShowDocModal] = useState(false);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      alert(currentLang === 'ar' ? 'حجم الملف كبير جداً (الحد الأقصى 15 ميغابايت)' : 'Fichier trop volumineux (max 15 Mo)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string;
+      const sizeStr = (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+      const doc = {
+        name: file.name,
+        type: (file.type.includes('pdf') || file.name.endsWith('.pdf')) ? ('pdf' as const) : ('image' as const),
+        dataUrl,
+        size: sizeStr
+      };
+      setAttachedDoc(doc);
+      try {
+        localStorage.setItem(`match_doc_${match.id}`, JSON.stringify(doc));
+      } catch (err) {
+        console.warn('Could not persist doc to localStorage', err);
+      }
+      setShowDocModal(true);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveDoc = () => {
+    setAttachedDoc(null);
+    try {
+      localStorage.removeItem(`match_doc_${match.id}`);
+    } catch {}
+    setShowDocModal(false);
+  };
+
   const handleDownloadCapturedImage = () => {
     if (!capturedImage) return;
     downloadImageFile(capturedImage.blob, capturedImage.filename);
@@ -658,21 +725,103 @@ export const MatchSheet: React.FC<{
 
   return (
     <div className="bg-slate-200 min-h-screen p-1.5 sm:p-4 font-sans text-black print:p-0 print:bg-white flex flex-col items-center">
+      {/* Hidden file input for uploading match sheet as image or PDF */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={handleFileUpload}
+      />
+
       {/* Top Controls Bar (hidden during printing/exporting) */}
-      <div className="w-full max-w-4xl mb-2 flex flex-wrap justify-between items-center gap-2 print:hidden px-1">
-        {match.isDemo ? (
+      <div className="w-full max-w-5xl mb-2 flex flex-wrap justify-between items-center gap-2 print:hidden px-1">
+        {match.isDemo && !isAccountActive ? (
           <div className="flex items-center gap-2 bg-blue-600/10 text-blue-900 border border-blue-400/30 px-3 py-1.5 rounded-xl text-xs font-black">
             <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
             <span>{t.demoWatermark}</span>
           </div>
         ) : (
           <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300"></span>
             <span>{t.officialMatchSheet}</span>
           </div>
         )}
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* 1. Dedicated Match Sheet & Logo Settings Button */}
+          <button 
+            onClick={() => setShowSettingsModal(true)} 
+            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-blue-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95 border border-blue-400/30"
+            title={currentLang === 'ar' ? 'إعدادات ورقة المباراة، الشعار، الأكاديمية والمديرية' : 'Paramètres feuille & Logo'}
+          >
+            <SettingsIcon size={16} />
+            <span>{currentLang === 'ar' ? 'إعدادات ورقة التحكيم والشعار' : 'Paramètres'}</span>
+          </button>
+
+          {/* 2. Direct Download as Image (PNG) */}
+          <button 
+            onClick={handleDownloadDirectImage} 
+            disabled={isCapturingImage}
+            className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-teal-600/30 transition-all cursor-pointer disabled:opacity-50 hover:scale-105 active:scale-95"
+            title="تحميل ورقة المباراة كصورة PNG عالية الدقة"
+          >
+            {isCapturingImage ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} />}
+            <span>{currentLang === 'ar' ? 'حفظ كصورة' : 'Image PNG'}</span>
+          </button>
+
+          {/* 3. Export as PDF */}
+          <button 
+            onClick={handleDownload} 
+            disabled={isExporting}
+            className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-red-600/30 transition-all cursor-pointer disabled:opacity-50 hover:scale-105 active:scale-95"
+            title="تصدير ورقة المباراة كملف PDF رسمي متناسق"
+          >
+            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            <span>{isExporting ? (currentLang === 'ar' ? 'جاري تصدير PDF...' : 'Export PDF...') : 'PDF'}</span>
+          </button>
+
+          {/* 4. Send via WhatsApp / Image Share */}
+          <button 
+            onClick={handleShareWhatsAppImage} 
+            disabled={isCapturingImage}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 hover:scale-105 active:scale-95"
+            title="إرسال ورقة المباراة كصورة عبر واتساب"
+          >
+            <MessageCircle size={16} />
+            <span>{currentLang === 'ar' ? 'مشاركة واتساب' : 'WhatsApp'}</span>
+          </button>
+
+          {/* 5. Upload external paper sheet or signed document (Image or PDF) */}
+          <button 
+            onClick={() => fileInputRef.current?.click()} 
+            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs sm:text-sm flex gap-1.5 items-center shadow-md transition-all cursor-pointer hover:scale-105 active:scale-95"
+            title="رفع ورقة مباراة أو وثيقة موقعة (صورة أو PDF) وإرفاقها بالمباراة"
+          >
+            <Upload size={15} />
+            <span>{attachedDoc ? (currentLang === 'ar' ? 'تغيير الوثيقة المرفقة' : 'Changer doc') : (currentLang === 'ar' ? 'رفع وثيقة (صورة/PDF)' : 'Téléverser doc')}</span>
+          </button>
+
+          {attachedDoc && (
+            <button 
+              onClick={() => setShowDocModal(true)} 
+              className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-md transition-all cursor-pointer animate-pulse"
+              title="معاينة الوثيقة المرفقة"
+            >
+              <Paperclip size={15} />
+              <span>{currentLang === 'ar' ? 'عرض المرفق' : 'Voir doc'}</span>
+            </button>
+          )}
+
+          {/* 6. Print Button */}
+          <button 
+            onClick={handlePrint} 
+            className="px-3 py-2 bg-black hover:bg-slate-800 text-white rounded-xl font-bold text-xs sm:text-sm flex gap-1.5 items-center shadow-lg transition-all cursor-pointer hover:scale-105"
+            title="طباعة ورقة المباراة A4"
+          >
+            <Printer size={16}/> {t.printBtn}
+          </button>
+
           {/* Language Switcher on Sheet Toolbar */}
           <div className="flex items-center bg-white rounded-xl border border-slate-300 p-0.5 shadow-sm text-xs font-bold">
             <Globe size={14} className="text-slate-500 mx-1.5" />
@@ -686,42 +835,15 @@ export const MatchSheet: React.FC<{
               onClick={() => toggleLanguage('fr')}
               className={`px-2 py-1 rounded-lg transition-all ${currentLang === 'fr' ? 'bg-blue-600 text-white font-black' : 'text-slate-700 hover:bg-slate-100'}`}
             >
-              Français
+              FR
             </button>
             <button
               onClick={() => toggleLanguage('en')}
               className={`px-2 py-1 rounded-lg transition-all ${currentLang === 'en' ? 'bg-blue-600 text-white font-black' : 'text-slate-700 hover:bg-slate-100'}`}
             >
-              English
+              EN
             </button>
           </div>
-
-          {/* Send via WhatsApp Button */}
-          <button 
-            onClick={handleShareWhatsAppImage} 
-            disabled={isCapturingImage}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
-            title="إرسال ورقة المباراة كصورة عبر واتساب"
-          >
-            {isCapturingImage ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}
-            <span>{isCapturingImage ? t.preparingImage : t.shareWhatsAppImage}</span>
-          </button>
-
-          <button 
-            onClick={handleDownload} 
-            disabled={isExporting}
-            className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-red-600/30 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
-            title="تصدير ورقة المباراة كملف PDF رسمي متناسق"
-          >
-            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            <span>{isExporting ? (currentLang === 'ar' ? 'جاري تصدير PDF...' : currentLang === 'fr' ? 'Exportation PDF...' : 'Generating PDF...') : 'PDF'}</span>
-          </button>
-          <button 
-            onClick={handlePrint} 
-            className="px-3 py-2 bg-black hover:bg-slate-800 text-white rounded-xl font-bold text-xs sm:text-sm flex gap-1.5 items-center shadow-lg transition-all cursor-pointer"
-          >
-            <Printer size={16}/> {t.printBtn}
-          </button>
         </div>
       </div>
 
@@ -832,7 +954,7 @@ export const MatchSheet: React.FC<{
             dir={isRtl ? 'rtl' : 'ltr'}
           >
         <div>
-          <SheetHeader details={match.details} lang={currentLang} onOpenSettings={() => setShowSettingsModal(true)} />
+          <SheetHeader details={match.details} lang={currentLang} sheetSettings={sheetSettings} onOpenSettings={() => setShowSettingsModal(true)} />
           <MatchInfo details={match.details} lang={currentLang} />
           <ScoreTable match={match} lang={currentLang} />
 
@@ -1122,6 +1244,92 @@ export const MatchSheet: React.FC<{
                 <MessageCircle size={16} className="text-emerald-600" />
                 <span>{currentLang === 'ar' ? 'إرسال تقرير المباراة نصياً' : 'Envoyer résumé texte WhatsApp'}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Modal for Match Sheet & Custom Logo */}
+      <SettingsModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        lang={currentLang}
+        isDarkMode={false}
+        onSettingsSaved={(newSettings) => {
+          setSheetSettings(newSettings);
+          setShowSettingsModal(false);
+        }}
+      />
+
+      {/* Uploaded External Match Sheet Document Modal (Image or PDF) */}
+      {showDocModal && attachedDoc && (
+        <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
+          <div className="bg-white w-full max-w-2xl max-h-[92vh] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 overflow-hidden border border-slate-200">
+            <div className="flex justify-between items-center border-b pb-3 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-md">
+                  {attachedDoc.type === 'pdf' ? <FileText size={20} className="text-red-400" /> : <ImageIcon size={20} className="text-blue-400" />}
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
+                    {currentLang === 'ar' ? 'الوثيقة المرفقة بورقة المباراة' : 'Document joint'}
+                  </h3>
+                  <p className="text-xs font-bold text-slate-500 truncate max-w-xs sm:max-w-md">
+                    {attachedDoc.name} ({attachedDoc.size})
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowDocModal(false)} 
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content view: PDF iframe or Image */}
+            <div className="flex-1 overflow-auto bg-slate-100 rounded-2xl p-2 border border-slate-200 flex items-center justify-center min-h-[300px]">
+              {attachedDoc.type === 'pdf' ? (
+                <iframe 
+                  src={attachedDoc.dataUrl} 
+                  title="PDF Viewer" 
+                  className="w-full h-[55vh] rounded-xl border border-slate-300 bg-white"
+                />
+              ) : (
+                <img 
+                  src={attachedDoc.dataUrl} 
+                  alt={attachedDoc.name} 
+                  className="max-w-full max-h-[55vh] object-contain rounded-xl shadow-md border border-slate-300 bg-white"
+                />
+              )}
+            </div>
+
+            {/* Actions footer */}
+            <div className="flex items-center justify-between gap-3 pt-2 border-t flex-shrink-0">
+              <button
+                onClick={handleRemoveDoc}
+                className="px-4 py-2.5 text-rose-600 hover:bg-rose-50 rounded-xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Trash2 size={16} />
+                <span>{currentLang === 'ar' ? 'حذف الوثيقة المرفقة' : 'Supprimer'}</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={attachedDoc.dataUrl}
+                  download={attachedDoc.name}
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                >
+                  <Download size={16} />
+                  <span>{currentLang === 'ar' ? 'تحميل الملف' : 'Télécharger'}</span>
+                </a>
+                <button
+                  onClick={() => setShowDocModal(false)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition cursor-pointer"
+                >
+                  {currentLang === 'ar' ? 'إغلاق' : 'Fermer'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

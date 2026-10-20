@@ -1171,10 +1171,22 @@ const App: React.FC = () => {
                       setShowSubscriptionModal(true); 
                       setIsMenuOpen(false); 
                     }} 
-                    className="w-full text-start flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-amber-500/15 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 transition-colors font-black text-sm text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                    className="w-full text-start flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 transition-all font-black text-sm text-slate-900 dark:text-white border border-amber-500/40 shadow-sm"
                   >
-                    <Crown size={18} className="text-amber-500" /> 
-                    <span>لائحة المسجلين وتفعيل الحسابات (المسؤول المركزي)</span>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
+                        <Crown size={16} />
+                      </div>
+                      <div>
+                        <div className="font-black text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <span>إعدادات تسيير</span>
+                          <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black">خاص بالمسير</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                          تفعيل حسابات المنخرطين وإدارة الاشتراكات
+                        </div>
+                      </div>
+                    </div>
                   </button>
                 )}
                 {/* Demo Mode: only show if account is not activated */}
@@ -1242,23 +1254,7 @@ const App: React.FC = () => {
             <span className="hidden sm:inline truncate max-w-[90px]">{currentUser ? (currentUser.displayName || currentUser.email.split('@')[0]) : t.login}</span>
           </button>
 
-          {/* Central Manager Quick Access Button */}
-          {isCentralManager && (
-            <button
-              onClick={() => {
-                setSubscriptionModalTab('manager');
-                setShowSubscriptionModal(true);
-              }}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-white shadow-md hover:scale-105 transition-all cursor-pointer"
-              title="لوحة المسير المركزي - تسيير المشتركين"
-            >
-              <Crown size={14} className="text-amber-200" />
-              <span className="hidden sm:inline">تسيير المشتركين</span>
-              <span className="sm:hidden">المسير</span>
-            </button>
-          )}
-
-          {/* Install on Phone Button */}
+          {/* Install on Phone Button - Automatically hidden when installed on device */}
           <PWAInstallButton lang={lang} variant="header" />
 
           {/* Activation button: ONLY show if account is NOT active and NOT central manager */}
@@ -1286,8 +1282,38 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Demo Match Banner */}
-      {match?.isDemo && (
+      {/* Central Manager Floating Side Dock Icon / Button (Visible ONLY to Central Manager) */}
+      {isCentralManager && (
+        <aside 
+          className={`fixed ${isRtl ? 'left-0' : 'right-0'} top-1/2 -translate-y-1/2 z-[140] print:hidden pointer-events-auto`}
+          aria-label="إعدادات تسيير المنخرطين"
+        >
+          <button
+            onClick={() => {
+              setSubscriptionModalTab('manager');
+              setShowSubscriptionModal(true);
+            }}
+            className={`group flex items-center gap-2 py-3 px-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-white font-black text-xs shadow-2xl shadow-amber-950/50 border-y ${
+              isRtl ? 'rounded-r-2xl border-r border-amber-300/40 hover:translate-x-1' : 'rounded-l-2xl border-l border-amber-300/40 hover:-translate-x-1'
+            } transition-all active:scale-95 cursor-pointer`}
+            title="إعدادات تسيير: تفعيل حسابات المنخرطين وتسيير الاشتراكات"
+          >
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-[10px] text-amber-200 uppercase tracking-widest font-extrabold flex items-center gap-1">
+                <Crown size={12} className="text-amber-200 animate-bounce" />
+                <span>المسير المركزي</span>
+              </span>
+              <span className="text-xs font-black drop-shadow-sm">إعدادات تسيير</span>
+            </div>
+            <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0 shadow-inner group-hover:rotate-12 transition-transform">
+              <ShieldCheck size={18} className="text-white" />
+            </div>
+          </button>
+        </aside>
+      )}
+
+      {/* Demo Match Banner - Only show if match is demo AND account is NOT active */}
+      {match?.isDemo && !isAccountActive && (
         <div className="bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-700 text-white px-3 sm:px-4 py-2 text-xs font-black flex flex-wrap items-center justify-between gap-2 shadow-md shrink-0 z-[105]">
           <div className="flex items-center gap-2">
             <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] uppercase font-mono tracking-wider shrink-0">⚡ MODE DÉMO</span>
@@ -1309,7 +1335,7 @@ const App: React.FC = () => {
             <SetupChoice 
               schedule={schedule} 
               onChoice={handleNewMatchChoice} 
-              onStartDemo={startDemoMatch}
+              onStartDemo={isAccountActive ? undefined : startDemoMatch}
               onOpenSubscription={() => {
                 setSubscriptionModalTab('activate');
                 setShowSubscriptionModal(true);
@@ -1405,7 +1431,7 @@ const App: React.FC = () => {
               )}
             </div>
           </div>}
-        {view === 'sheet' && match && <div className="p-4 h-full overflow-y-auto"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} /></div>}
+        {view === 'sheet' && match && <div className="p-4 h-full overflow-y-auto"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} isAccountActive={isAccountActive} /></div>}
         {view === 'archive' && <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} lang={lang} /></div>}
         
         {/* Footer Credit */}

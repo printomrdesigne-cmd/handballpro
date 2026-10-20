@@ -12,11 +12,12 @@ export function usePWAInstall() {
 
   useEffect(() => {
     // Detect standalone mode (already installed on home screen or desktop PWA)
+    const storedInstalled = typeof window !== 'undefined' && localStorage.getItem('pwa_installed') === 'true';
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
       document.referrer.includes('android-app://');
-    setIsInstalled(isStandalone);
+    setIsInstalled(isStandalone || storedInstalled);
 
     // Detect iOS devices (iPhone, iPad, iPod)
     const userAgent = window.navigator.userAgent.toLowerCase();
@@ -32,6 +33,11 @@ export function usePWAInstall() {
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setDeferredPrompt(null);
+      try {
+        localStorage.setItem('pwa_installed', 'true');
+      } catch (e) {
+        // Ignore storage errors
+      }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -43,14 +49,21 @@ export function usePWAInstall() {
     };
   }, []);
 
+  const markAsInstalled = () => {
+    setIsInstalled(true);
+    setDeferredPrompt(null);
+    try {
+      localStorage.setItem('pwa_installed', 'true');
+    } catch (e) {}
+  };
+
   const install = async (): Promise<boolean> => {
     if (!deferredPrompt) return false;
     try {
       await deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
-        setIsInstalled(true);
-        setDeferredPrompt(null);
+        markAsInstalled();
         return true;
       }
     } catch (err) {
@@ -64,5 +77,6 @@ export function usePWAInstall() {
     isInstalled,
     isIOS,
     install,
+    markAsInstalled,
   };
 }

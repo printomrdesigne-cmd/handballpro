@@ -14,12 +14,12 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   variant = 'header',
   onInstalled
 }) => {
-  const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
+  const { isInstallable, isInstalled, isIOS, install, markAsInstalled } = usePWAInstall();
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [installedSuccess, setInstalledSuccess] = useState(false);
 
-  // If already installed as standalone app, do not show duplicate prompt
-  if (isInstalled && !installedSuccess) {
+  // If already installed as standalone app or marked installed, hide the header button completely
+  if (isInstalled || installedSuccess) {
     if (variant === 'menu') {
       return (
         <div className="flex items-center gap-2 px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 rounded-lg">
@@ -28,6 +28,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         </div>
       );
     }
+    // Return null for 'header' and 'card' variants so the button never appears once installed
     return null;
   }
 
@@ -236,12 +237,26 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               </span>
             </div>
 
-            <button
-              onClick={() => setShowGuideModal(false)}
-              className="mt-5 w-full py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-black text-xs sm:text-sm transition shadow-lg"
-            >
-              {lang === 'ar' ? 'حسناً، فهمت' : 'D\'accord, compris'}
-            </button>
+            <div className="flex flex-col gap-2 mt-5">
+              <button
+                onClick={() => {
+                  markAsInstalled();
+                  setInstalledSuccess(true);
+                  setShowGuideModal(false);
+                }}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm transition shadow-lg flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>{lang === 'ar' ? 'تمت إضافة التطبيق لهاتفي بالفعل (إخفاء زر التثبيت)' : 'Déjà installé sur mon appareil'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowGuideModal(false)}
+                className="w-full py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 font-bold text-xs transition"
+              >
+                {lang === 'ar' ? 'إغلاق' : 'Fermer'}
+              </button>
+            </div>
           </div>
         </div>
       )}
