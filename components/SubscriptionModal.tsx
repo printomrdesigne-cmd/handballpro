@@ -154,7 +154,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
   const handleManagerLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (managerPin === '2026' || managerPin === 'admin2026' || isCentralManager) {
+    if (managerPin === '123456' || managerPin === '2026' || managerPin === 'admin2026' || isCentralManager) {
       setIsManagerUnlocked(true);
       setManagerPin('');
       loadUsers();

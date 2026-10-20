@@ -1242,6 +1242,22 @@ const App: React.FC = () => {
             <span className="hidden sm:inline truncate max-w-[90px]">{currentUser ? (currentUser.displayName || currentUser.email.split('@')[0]) : t.login}</span>
           </button>
 
+          {/* Central Manager Quick Access Button */}
+          {isCentralManager && (
+            <button
+              onClick={() => {
+                setSubscriptionModalTab('manager');
+                setShowSubscriptionModal(true);
+              }}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-white shadow-md hover:scale-105 transition-all cursor-pointer"
+              title="لوحة المسير المركزي - تسيير المشتركين"
+            >
+              <Crown size={14} className="text-amber-200" />
+              <span className="hidden sm:inline">تسيير المشتركين</span>
+              <span className="sm:hidden">المسير</span>
+            </button>
+          )}
+
           {/* Install on Phone Button */}
           <PWAInstallButton lang={lang} variant="header" />
 

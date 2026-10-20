@@ -5,8 +5,10 @@ import {
   loginWithGoogle,
   logoutUser, 
   activateUserWithCode, 
+  resetUserPassword,
   UserProfile,
-  CENTRAL_MANAGER_EMAIL 
+  CENTRAL_MANAGER_EMAIL,
+  isCentralManagerEmail 
 } from '../utils/firebase.ts';
 import { 
   Mail, 
@@ -72,7 +74,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   if (!isOpen) return null;
 
   const isRtl = lang === 'ar';
-  const isCentralManager = currentUser?.email?.toLowerCase() === CENTRAL_MANAGER_EMAIL.toLowerCase();
+  const isCentralManager = isCentralManagerEmail(currentUser?.email);
+
+  const handlePasswordReset = async () => {
+    if (!email.trim()) {
+      setErrorMsg(lang === 'ar' ? 'يرجى كتابة بريدك الإلكتروني في الخانة أعلاه أولاً.' : 'Veuillez saisir votre email d\'abord.');
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await resetUserPassword(email.trim());
+      if (res.success) {
+        setSuccessMsg(lang === 'ar' 
+          ? 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني. يرجى مراجعة صندوق الوارد والبريد غير المرغوب فيه (Spam).' 
+          : 'Lien de réinitialisation envoyé à votre adresse email.');
+      } else {
+        setErrorMsg(res.message);
+      }
+    } catch (e: any) {
+      setErrorMsg(e.message || 'تعذر إرسال الرابط.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setErrorMsg(null);
@@ -656,9 +682,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[11px] font-black uppercase text-slate-500 mb-1">
-                  كلمة المرور <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-black uppercase text-slate-500">
+                    كلمة المرور <span className="text-rose-500">*</span>
+                  </label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={handlePasswordReset}
+                      className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      نسيت كلمة المرور؟
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type="password"

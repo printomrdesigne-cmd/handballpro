@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScheduledMatch, AppLanguage } from '../types.ts';
-import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, Sparkles, CheckCircle2, Crown } from 'lucide-react';
 import { translations } from '../utils/translations.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
@@ -45,18 +45,32 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
 
         {/* Account Authentication Banner */}
         {onOpenAuth && (
-          <div className="pt-1 flex justify-center">
+          <div className="pt-1 flex flex-col items-center gap-2 justify-center">
             {currentUser ? (
-              <div 
-                onClick={onOpenAuth}
-                className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black border cursor-pointer transition-all ${
-                  isPro 
-                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
-                }`}
-              >
-                <span>👤 {t.userGreeting} <strong>{currentUser.displayName || currentUser.email}</strong> {isPro ? `★ (${t.proActive})` : `(${t.proRequired})`}</span>
-                <span className="text-[11px] underline font-bold">{t.manageAccount}</span>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <div 
+                  onClick={onOpenAuth}
+                  className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black border cursor-pointer transition-all ${
+                    isCentralManager
+                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
+                      : isPro 
+                      ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                  }`}
+                >
+                  <span>{isCentralManager ? '👑 المسير المركزي:' : '👤 ' + t.userGreeting} <strong>{currentUser.displayName || currentUser.email}</strong> {isCentralManager ? '(المسؤول الإداري العام)' : isPro ? `★ (${t.proActive})` : `(${t.proRequired})`}</span>
+                  <span className="text-[11px] underline font-bold">{t.manageAccount}</span>
+                </div>
+
+                {isCentralManager && onOpenManagerSettings && (
+                  <button
+                    onClick={onOpenManagerSettings}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-white shadow-md hover:scale-105 transition-all cursor-pointer"
+                  >
+                    <Crown size={13} className="text-amber-200" />
+                    <span>لوحة تسيير المشتركين وتفعيل الحسابات</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div 
