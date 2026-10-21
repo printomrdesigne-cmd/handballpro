@@ -1,19 +1,19 @@
 import React from 'react';
 import { ScheduledMatch, AppLanguage } from '../types.ts';
-import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, Sparkles, CheckCircle2, Crown } from 'lucide-react';
+import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, Sparkles, CheckCircle2, Crown, Ban } from 'lucide-react';
 import { translations } from '../utils/translations.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
 interface SetupChoiceProps {
   schedule: ScheduledMatch[];
   onChoice: (match?: ScheduledMatch) => void;
-  onStartDemo?: () => void;
   onOpenSubscription?: () => void;
   onOpenManagerSettings?: () => void;
   currentUser?: any;
   onOpenAuth?: () => void;
   isPro?: boolean;
   isCentralManager?: boolean;
+  subscriberStats?: { total: number; active: number; closed: number };
   isDarkMode: boolean;
   lang?: AppLanguage;
 }
@@ -21,13 +21,13 @@ interface SetupChoiceProps {
 export const SetupChoice: React.FC<SetupChoiceProps> = ({ 
   schedule, 
   onChoice, 
-  onStartDemo,
   onOpenSubscription,
   onOpenManagerSettings,
   currentUser,
   onOpenAuth,
   isPro = false,
   isCentralManager = false,
+  subscriberStats,
   isDarkMode,
   lang = 'ar'
 }) => {
@@ -55,10 +55,10 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
                       ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
                       : isPro 
                       ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
-                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                      : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30 hover:bg-rose-500/20'
                   }`}
                 >
-                  <span>{isCentralManager ? '👑 المسير المركزي:' : '👤 ' + t.userGreeting} <strong>{currentUser.displayName || currentUser.email}</strong> {isCentralManager ? '(المسؤول الإداري العام)' : isPro ? `★ (${t.proActive})` : `(${t.proRequired})`}</span>
+                  <span>{isCentralManager ? '👑 المسير المركزي:' : '👤 ' + t.userGreeting} <strong>{currentUser.displayName || currentUser.email}</strong> {isCentralManager ? '(المسؤول الإداري العام)' : isPro ? `★ (${t.proActive})` : '(حساب مغلق / في انتظار التفعيل)'}</span>
                   <span className="text-[11px] underline font-bold">{t.manageAccount}</span>
                 </div>
 
@@ -75,46 +75,52 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
             ) : (
               <div 
                 onClick={onOpenAuth}
-                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 cursor-pointer hover:bg-amber-500/20 transition-all"
+                className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-black bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/30 cursor-pointer hover:bg-blue-500/20 transition-all"
               >
                 <span>{t.signInNotice}</span>
-                <span className="text-[11px] font-black underline bg-amber-500 text-white px-2 py-0.5 rounded-full">{t.signInBtn}</span>
+                <span className="text-[11px] font-black underline bg-blue-600 text-white px-2 py-0.5 rounded-full">{t.signInBtn}</span>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* 1-CLICK DEMO CARD (Only show if account is NOT activated) */}
-      {onStartDemo && !isPro && (
-        <div className={`p-6 rounded-[2.5rem] border-2 relative overflow-hidden shadow-xl transition-all hover:shadow-2xl ${
+      {/* Central Manager Subscriber Count & Account Activation/Closing Card */}
+      {isCentralManager && onOpenManagerSettings && (
+        <div className={`p-5 rounded-[2.5rem] border-2 shadow-xl transition-all ${
           isDarkMode 
-            ? 'bg-gradient-to-r from-blue-950/70 via-indigo-950/50 to-slate-900 border-blue-500/50' 
-            : 'bg-gradient-to-r from-blue-50 via-indigo-50/50 to-white border-blue-400'
+            ? 'bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900 border-amber-500/40' 
+            : 'bg-gradient-to-r from-amber-50/90 via-blue-50/50 to-white border-amber-400'
         }`}>
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-5 text-center sm:text-start">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-start">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 shrink-0 rotate-3">
-                <span className="text-2xl">⚡</span>
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0">
+                <Crown size={28} />
               </div>
               <div>
-                <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-600 dark:text-blue-400 mb-1 border border-blue-500/20">
-                  <Sparkles size={12} />
-                  <span>{t.demoCardBadge}</span>
+                <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 mb-1">
+                  <span>خاص بالمسير المركزي (printomrdesigne@gmail.com)</span>
                 </div>
-                <h3 className="text-xl font-black">{t.demoCardTitle}</h3>
-                <p className={`text-xs font-bold mt-0.5 max-w-lg ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                  {t.demoCardDesc}
-                </p>
+                <h3 className="text-lg sm:text-xl font-black">
+                  إحصائيات المنخرطين وتفعيل / غلق الحسابات
+                </h3>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+                  <span>إجمالي المشتركين: <strong className="text-blue-600 dark:text-blue-400 font-black text-sm">{subscriberStats?.total ?? 0}</strong></span>
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span>المفعلين: <strong className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{subscriberStats?.active ?? 0}</strong></span>
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span>المغلقين: <strong className="text-rose-600 dark:text-rose-400 font-black text-sm">{subscriberStats?.closed ?? 0}</strong></span>
+                </div>
               </div>
             </div>
 
             <button
-              onClick={onStartDemo}
-              className="px-6 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-2xl shadow-xl shadow-blue-600/30 hover:scale-105 transition-all flex items-center gap-2 shrink-0 cursor-pointer"
+              onClick={onOpenManagerSettings}
+              className="w-full md:w-auto px-6 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm rounded-2xl shadow-xl shadow-emerald-600/30 hover:scale-105 transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer"
             >
-              <span>{t.demoCardBtn}</span>
-              <ArrowIcon size={18} />
+              <Crown size={17} />
+              <span>تفعيل أو غلق حسابات المشتركين</span>
+              <ArrowIcon size={16} />
             </button>
           </div>
         </div>
@@ -137,15 +143,20 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
             <p className={`text-xs font-bold px-4 ${isDarkMode ? 'text-slate-500' : 'text-slate-700'}`}>{t.manualSetupDesc}</p>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            {isPro ? (
+            {currentUser && isPro ? (
               <span className={`inline-flex items-center gap-1.5 px-6 py-2 rounded-full font-black text-xs transition-colors ${isDarkMode ? 'bg-slate-800 text-blue-400' : 'bg-slate-50 text-blue-600'}`}>
                 <CheckCircle2 size={14} />
                 <span>{t.startFromScratch}</span>
               </span>
+            ) : currentUser && !isPro ? (
+              <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-full font-black text-xs bg-rose-500/15 text-rose-600 border border-rose-500/30">
+                <Ban size={12} />
+                <span>حساب محجوب مؤقتاً</span>
+              </span>
             ) : (
-              <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-full font-black text-xs bg-amber-500/15 text-amber-600 border border-amber-500/30">
+              <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-full font-black text-xs bg-blue-500/15 text-blue-600 border border-blue-500/30">
                 <Lock size={12} />
-                <span>{t.forSubscribersOnly}</span>
+                <span>تسجيل الدخول للمتابعة</span>
               </span>
             )}
           </div>

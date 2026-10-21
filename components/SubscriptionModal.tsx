@@ -8,6 +8,10 @@ import {
   adminRenewSubscriber,
   adminSendRenewalWhatsApp,
   adminUpdateSubscriberSettings,
+  adminBlockUser,
+  adminSendSubscriptionRequestWhatsApp,
+  adminToggleAccountStatus,
+  adminSendActivationSuccessWhatsApp,
   UserProfile, 
   CENTRAL_MANAGER_EMAIL,
   isCentralManagerEmail,
@@ -38,7 +42,9 @@ import {
   Save,
   AlertTriangle,
   UserCheck,
-  Crown
+  Crown,
+  Ban,
+  ShieldAlert
 } from 'lucide-react';
 
 interface SubscriptionModalProps {
@@ -80,7 +86,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'pending'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked' | 'expired'>('all');
+  const [blockingId, setBlockingId] = useState<string | null>(null);
+
+  // Custom WhatsApp Subscription Message Modal State
+  const [messagingUser, setMessagingUser] = useState<UserProfile | null>(null);
+  const [customMsgText, setCustomMsgText] = useState('');
 
   // Edit Subscriber Modal State
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -91,6 +102,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     subscriptionExpiresAt: '',
     managerNotes: '',
     isActive: true,
+    isBlocked: false,
     activationCode: ''
   });
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -230,6 +242,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
       subscriptionExpiresAt: dateStr,
       managerNotes: u.managerNotes || '',
       isActive: Boolean(u.isActive),
+      isBlocked: Boolean(u.isBlocked),
       activationCode: u.activationCode || ''
     });
   };
@@ -253,6 +266,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
         managerNotes: editForm.managerNotes.trim(),
         isActive: editForm.isActive,
         isPro: editForm.isActive,
+        isBlocked: editForm.isBlocked,
         activationCode: editForm.activationCode.trim().toUpperCase()
       });
 
@@ -289,22 +303,92 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     }
   };
 
+  // Toggle Account Active / Closed Status (تفعيل الحساب أو غلق الحساب)
+  const handleToggleAccount = async (u: UserProfile, shouldActivate: boolean) => {
+    setActivatingId(u.uid);
+    try {
+      const defaultReason = shouldActivate 
+        ? '' 
+        : 'تم غلق الحساب من قِبل المسير المركزي. يرجى التواصل مع الإدارة لإعادة تفعيل الحساب.';
+      await adminToggleAccountStatus(u.uid, shouldActivate, defaultReason);
+      setFeedback({
+        type: 'success',
+        message: shouldActivate 
+          ? `✅ تم تفعيل حساب ${u.displayName || u.email} بنجاح! أصبح بإمكانه استخدام التطبيق.`
+          : `🔒 تم غلق حساب ${u.displayName || u.email}. لن يتمكن من استخدام التطبيق حتى يتم تفعيله مجدداً.`
+      });
+      await loadUsers();
+      // If activated and user has a phone, notify them via WhatsApp
+      if (shouldActivate && u.phone) {
+        adminSendActivationSuccessWhatsApp(u);
+      }
+    } catch (e) {
+      console.error(e);
+      setFeedback({ type: 'error', message: 'تعذر تعديل حالة الحساب' });
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  // Toggle User Block Status (حجب التطبيق على المنخرط)
+  const handleToggleBlock = async (u: UserProfile, shouldBlock: boolean) => {
+    setBlockingId(u.uid);
+    try {
+      const defaultReason = shouldBlock 
+        ? 'تم حجب التطبيق على هذا الحساب مؤقتاً من قبل المسير المركزي. يرجى أداء واجب الانخراط السنوي (30 درهم) لتفعيل الحساب.'
+        : '';
+      await adminBlockUser(u.uid, shouldBlock, defaultReason);
+      setFeedback({
+        type: 'success',
+        message: shouldBlock 
+          ? `🚫 تم غلق التطبيق على ${u.displayName || u.email}.`
+          : `✅ تم تفعيل حساب ${u.displayName || u.email} بنجاح!`
+      });
+      await loadUsers();
+    } catch (e) {
+      console.error(e);
+      setFeedback({ type: 'error', message: 'تعذر تعديل حالة الحساب' });
+    } finally {
+      setBlockingId(null);
+    }
+  };
+
+  // Open Custom WhatsApp Subscription Message Modal
+  const handleOpenCustomMessage = (u: UserProfile) => {
+    const teacherName = u.displayName || 'الأستاذ الكريم';
+    const defaultText = 
+`مرحباً بالأستاذ/المسؤول *${teacherName}* 🤾‍♂️،
+
+تحية رياضية طيبة من إدارة تطبيق *HandballScore Pro* لإدارة وتحكيم مباريات كرة اليد.
+
+نحيطكم علماً بضرورة تسوية الانخراط السنوي (30 درهم فقط) لمتابعة الاستفادة من جميع خدمات التطبيق (التحكيم الرقمي، ورقة المباراة الرسمية A4، واستخدام التطبيق بدون إنترنت).
+
+📌 **للتسوية أو الاستفسار:** يرجى الرد على هذه الرسالة أو التواصل مع المسير المركزي مباشرة.
+🔗 رابط التطبيق: ${window.location.origin}
+
+مع خالص التقدير،
+المسير المركزي.`;
+
+    setCustomMsgText(defaultText);
+    setMessagingUser(u);
+  };
+
   // Helper to test if a membership is expired
   const isUserExpired = (u: UserProfile): boolean => {
-    if (!u.isActive) return false;
+    if (u.isBlocked || !u.isActive) return false;
     if (!u.subscriptionExpiresAt) return false;
     return new Date(u.subscriptionExpiresAt).getTime() < Date.now();
   };
 
   // Metrics calculation
-  const totalSubscribers = usersList.length;
-  const activeSubscribers = usersList.filter(u => u.isActive && !isUserExpired(u)).length;
-  const expiredSubscribers = usersList.filter(u => isUserExpired(u)).length;
-  const pendingSubscribers = usersList.filter(u => !u.isActive).length;
+  const subscribersList = usersList.filter(u => !isCentralManagerEmail(u.email));
+  const totalSubscribers = subscribersList.length;
+  const activeSubscribers = subscribersList.filter(u => u.isActive && !u.isBlocked).length;
+  const closedSubscribers = subscribersList.filter(u => !u.isActive || u.isBlocked).length;
 
-  const filteredUsers = usersList.filter(u => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = (
+  const filteredUsers = subscribersList.filter(u => {
+    const q = (searchQuery || '').toLowerCase();
+    const matchesSearch = !q || (
       (u.displayName && u.displayName.toLowerCase().includes(q)) ||
       (u.email && u.email.toLowerCase().includes(q)) ||
       (u.phone && u.phone.includes(q)) ||
@@ -315,19 +399,18 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     if (!matchesSearch) return false;
 
     if (statusFilter === 'active') {
-      return u.isActive && !isUserExpired(u);
+      return u.isActive && !u.isBlocked;
     }
-    if (statusFilter === 'expired') {
-      return isUserExpired(u);
-    }
-    if (statusFilter === 'pending') {
-      return !u.isActive;
+    if (statusFilter === 'closed' || statusFilter === 'blocked') {
+      return !u.isActive || u.isBlocked;
     }
     return true;
   }).sort((a, b) => {
-    // Priority 1: Unactivated accounts awaiting 1-click activation at the top!
-    if (!a.isActive && b.isActive) return -1;
-    if (a.isActive && !b.isActive) return 1;
+    // Priority 1: Closed/inactive users first so manager can quickly activate them
+    const aClosed = !a.isActive || a.isBlocked;
+    const bClosed = !b.isActive || b.isBlocked;
+    if (aClosed && !bClosed) return -1;
+    if (!aClosed && bClosed) return 1;
     // Priority 2: Newest first
     return (new Date(b.createdAt || 0).getTime()) - (new Date(a.createdAt || 0).getTime());
   });
@@ -541,18 +624,18 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 /* Manager Registered Users & Renewal Settings Panel */
                 <div className="space-y-4">
                   {/* Top Stats Cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                       <div className="flex items-center justify-between text-slate-400 mb-1">
-                        <span className="text-[11px] font-black">إجمالي المشتركين</span>
-                        <Users size={16} />
+                        <span className="text-[11px] font-black">إجمالي المشتركين المسجلين</span>
+                        <Users size={16} className="text-blue-500" />
                       </div>
-                      <p className="text-2xl font-black">{totalSubscribers}</p>
+                      <p className="text-2xl font-black text-blue-600 dark:text-blue-400">{totalSubscribers}</p>
                     </div>
 
                     <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50/80 border-emerald-200'}`}>
                       <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
-                        <span className="text-[11px] font-black">منخرطون نشطون</span>
+                        <span className="text-[11px] font-black">الحسابات المفعلة (نشط)</span>
                         <ShieldCheck size={16} />
                       </div>
                       <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{activeSubscribers}</p>
@@ -560,18 +643,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
                     <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-rose-950/20 border-rose-500/30' : 'bg-rose-50/80 border-rose-200'}`}>
                       <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 mb-1">
-                        <span className="text-[11px] font-black">بحاجة لتجديد / منتهي</span>
-                        <RotateCw size={16} />
+                        <span className="text-[11px] font-black">الحسابات المغلقة / قيد الانتظار</span>
+                        <Lock size={16} />
                       </div>
-                      <p className="text-2xl font-black text-rose-600 dark:text-rose-400">{expiredSubscribers}</p>
-                    </div>
-
-                    <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-amber-950/20 border-amber-500/30' : 'bg-amber-50/80 border-amber-200'}`}>
-                      <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-                        <span className="text-[11px] font-black">في انتظار التفعيل</span>
-                        <Clock size={16} />
-                      </div>
-                      <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{pendingSubscribers}</p>
+                      <p className="text-2xl font-black text-rose-600 dark:text-rose-400">{closedSubscribers}</p>
                     </div>
                   </div>
 
@@ -583,7 +658,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                         onClick={() => setStatusFilter('all')}
                         className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                           statusFilter === 'all'
-                            ? 'bg-emerald-600 text-white shadow'
+                            ? 'bg-blue-600 text-white shadow'
                             : 'bg-white/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
@@ -597,29 +672,20 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                             : 'bg-white/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
-                        نشط ({activeSubscribers})
+                        المفعلين ({activeSubscribers})
                       </button>
                       <button
-                        onClick={() => setStatusFilter('expired')}
+                        onClick={() => setStatusFilter('closed')}
                         className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                          statusFilter === 'expired'
+                          statusFilter === 'closed'
                             ? 'bg-rose-600 text-white shadow'
                             : 'bg-white/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                         }`}
                       >
-                        منتهي / تجديد ({expiredSubscribers})
-                      </button>
-                      <button
-                        onClick={() => setStatusFilter('pending')}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                          statusFilter === 'pending'
-                            ? 'bg-amber-600 text-white shadow'
-                            : 'bg-white/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                        }`}
-                      >
-                        معلق ({pendingSubscribers})
+                        المغلقين ({closedSubscribers})
                       </button>
                     </div>
+
 
                     <div className="flex items-center gap-2 w-full md:w-auto">
                       <div className="relative flex-1 md:w-64">
@@ -653,10 +719,11 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                       </div>
                     ) : (
                       filteredUsers.map((u) => {
+                        const isBlocked = Boolean(u.isBlocked);
                         const isExpired = isUserExpired(u);
-                        const isUserActive = Boolean(u.isActive && !isExpired);
-                        const isPending = !u.isActive;
+                        const isUserActive = !isBlocked && !isExpired;
                         const isRenewing = renewingId === u.uid;
+                        const isBlocking = blockingId === u.uid;
 
                         let expiryDisplay = 'غير محدد';
                         if (u.subscriptionExpiresAt) {
@@ -675,37 +742,31 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                           <div 
                             key={u.uid}
                             className={`p-4 rounded-3xl border-2 transition-all flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 ${
-                              isUserActive 
-                                ? (isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
+                              isBlocked
+                                ? (isDarkMode ? 'bg-rose-950/30 border-rose-600/70 shadow-lg' : 'bg-rose-50 border-rose-400 shadow-md')
                                 : isExpired
-                                ? (isDarkMode ? 'bg-rose-950/20 border-rose-500/40' : 'bg-rose-50/70 border-rose-300')
-                                : (isDarkMode ? 'bg-amber-950/20 border-amber-500/40' : 'bg-amber-50/60 border-amber-300')
+                                ? (isDarkMode ? 'bg-amber-950/20 border-amber-500/40' : 'bg-amber-50/70 border-amber-300')
+                                : (isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
                             }`}
                           >
                             {/* Subscriber Information */}
                             <div className="space-y-1.5 flex-1 w-full">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
-                                  {u.displayName || 'أستاذ'}
+                                <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-1.5">
+                                  {isBlocked && <Ban size={16} className="text-rose-500" />}
+                                  <span>{u.displayName || 'أستاذ'}</span>
                                 </h4>
 
                                 {/* Status Badge */}
-                                {isUserActive && (
+                                {!u.isActive || isBlocked ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white shadow-sm">
+                                    <Lock size={12} />
+                                    <span>حساب مغلق 🔒</span>
+                                  </span>
+                                ) : (
                                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                                     <ShieldCheck size={12} />
-                                    <span>منخرط مفعل (30 درهم)</span>
-                                  </span>
-                                )}
-                                {isExpired && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40">
-                                    <AlertTriangle size={12} />
-                                    <span>انتهت الصلاحية (بحاجة لتجديد)</span>
-                                  </span>
-                                )}
-                                {isPending && (
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40">
-                                    <Clock size={12} />
-                                    <span>في انتظار التفعيل الأولي</span>
+                                    <span>حساب مفعل ونشط ✅</span>
                                   </span>
                                 )}
 
@@ -714,11 +775,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                   <span className="font-mono text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2.5 py-0.5 rounded-full border border-blue-500/20">
                                     🔑 {u.activationCode}
                                   </span>
-                                ) : (
-                                  <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
-                                    لم يتم إرسال كود بعد
-                                  </span>
-                                )}
+                                ) : null}
 
                                 <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded">
                                   {u.subscriptionPrice || ANNUAL_SUBSCRIPTION_PRICE}
@@ -749,8 +806,13 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                                 </span>
                               </div>
 
-                              {/* Manager Notes if present */}
-                              {u.managerNotes && (
+                              {/* Manager Notes or Block Reason if present */}
+                              {(!u.isActive || isBlocked) && u.blockReason && (
+                                <p className="text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-500/10 px-2.5 py-1 rounded-xl border border-rose-500/25 inline-block mt-1">
+                                  🔒 سبب الغلق: {u.blockReason}
+                                </p>
+                              )}
+                              {u.managerNotes && u.isActive && !isBlocked && (
                                 <p className="text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-500/5 px-2.5 py-1 rounded-xl border border-amber-500/20 inline-block mt-1">
                                   📝 ملاحظات المسير: {u.managerNotes}
                                 </p>
@@ -759,67 +821,59 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
                             {/* Actions for Central Manager */}
                             <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto shrink-0 pt-2 lg:pt-0">
-                              {!u.isActive ? (
-                                /* 1-CLICK ACTIVATION BUTTON FOR CENTRAL MANAGER */
+                              {/* 1. DIRECT ACTIVATE / CLOSE BUTTON */}
+                              {u.isActive && !isBlocked ? (
                                 <button
-                                  onClick={() => handleToggleActivate(u, true)}
+                                  onClick={() => handleToggleAccount(u, false)}
                                   disabled={activatingId === u.uid}
-                                  className="flex-1 lg:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95 disabled:opacity-50"
-                                  title="تفعيل الحساب بضغطة زر واحدة وتمديد الصلاحية لسنة كاملة (30 درهم)"
+                                  className="flex-1 lg:flex-none px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                  title="غلق حساب هذا المنخرط"
                                 >
-                                  <CheckCircle2 size={16} className={activatingId === u.uid ? 'animate-spin' : ''} />
-                                  <span>تفعيل الحساب (بضغطة زر)</span>
+                                  <Lock size={15} className={activatingId === u.uid ? 'animate-spin' : ''} />
+                                  <span>غلق الحساب 🔒</span>
                                 </button>
                               ) : (
-                                /* Renew Membership (+1 Year & 30 DH) */
                                 <button
-                                  onClick={() => handleRenewMembership(u)}
-                                  disabled={isRenewing}
-                                  className="flex-1 lg:flex-none px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                  title="تجديد الانخراط لسنة إضافية وتفعيل الحساب"
+                                  onClick={() => handleToggleAccount(u, true)}
+                                  disabled={activatingId === u.uid}
+                                  className="flex-1 lg:flex-none px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md shadow-emerald-600/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                  title="تفعيل حساب المنخرط وإتاحة التطبيق له فوراً"
                                 >
-                                  <RotateCw size={14} className={isRenewing ? 'animate-spin' : ''} />
-                                  <span>تجديد الانخراط (+سنة)</span>
+                                  <ShieldCheck size={15} className={activatingId === u.uid ? 'animate-spin' : ''} />
+                                  <span>تفعيل الحساب 🔓</span>
                                 </button>
                               )}
 
-                              {/* Send WhatsApp code or renewal confirmation */}
+                              {/* 2. SEND CUSTOM SUBSCRIPTION WHATSAPP MESSAGE */}
                               <button
-                                onClick={() => {
-                                  if (u.isActive) {
-                                    adminSendRenewalWhatsApp(u);
-                                  } else {
-                                    handleSendWhatsApp(u);
-                                  }
-                                }}
-                                className="flex-1 lg:flex-none px-3 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-300 font-black text-xs border border-emerald-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                title={u.isActive ? 'إرسال تأكيد التجديد بالواتساب' : 'إرسال كود التفعيل بالواتساب'}
+                                onClick={() => handleOpenCustomMessage(u)}
+                                className="flex-1 lg:flex-none px-3.5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                title="إرسال رسالة خاصة بالاشتراك عبر الواتساب"
                               >
-                                <MessageSquare size={14} className="text-emerald-600" />
-                                <span>واتساب</span>
+                                <MessageSquare size={14} />
+                                <span>رسالة واتساب</span>
                               </button>
 
-                              {/* Edit Subscriber Settings */}
+                              {/* 3. RENEW MEMBERSHIP (+1 Year & 30 DH) */}
+                              <button
+                                onClick={() => handleRenewMembership(u)}
+                                disabled={isRenewing}
+                                className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                title="تجديد الانخراط لسنة إضافية"
+                              >
+                                <RotateCw size={13} className={isRenewing ? 'animate-spin' : ''} />
+                                <span>+سنة</span>
+                              </button>
+
+                              {/* 4. EDIT SUBSCRIBER SETTINGS */}
                               <button
                                 onClick={() => handleOpenEdit(u)}
-                                className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs border border-slate-300 dark:border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
-                                title="إعدادات المشترك (تعديل البيانات، تمديد الصلاحية، إضافة ملاحظات)"
+                                className="px-3 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-black text-xs border border-slate-300 dark:border-slate-700 transition-all flex items-center gap-1 cursor-pointer"
+                                title="تعديل بيانات المنخرط والملاحظات"
                               >
                                 <Settings size={14} />
                                 <span>إعدادات</span>
                               </button>
-
-                              {/* Toggle Active / Deactivate */}
-                              {u.isActive && (
-                                <button
-                                  onClick={() => handleToggleActivate(u, false)}
-                                  disabled={activatingId === u.uid}
-                                  className="px-2.5 py-2.5 rounded-xl font-black text-xs border border-rose-500/30 text-rose-600 hover:bg-rose-500/10 transition-all cursor-pointer flex items-center justify-center"
-                                  title="تعطيل الحساب"
-                                >
-                                  <Lock size={14} />
-                                </button>
-                              )}
                             </div>
                           </div>
                         );
@@ -953,26 +1007,31 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                   />
                 </div>
 
-                {/* Active Toggle Switch */}
+                {/* Blocked / Allowed Toggle Switch */}
                 <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                  isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  editForm.isBlocked
+                    ? (isDarkMode ? 'bg-rose-950/20 border-rose-500/40' : 'bg-rose-50 border-rose-300')
+                    : (isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200')
                 }`}>
                   <div>
-                    <span className="text-xs font-black block">حالة الحساب</span>
+                    <span className="text-xs font-black block flex items-center gap-1">
+                      {editForm.isBlocked && <Ban size={14} className="text-rose-500" />}
+                      <span>حجب التطبيق</span>
+                    </span>
                     <span className="text-[11px] text-slate-500 font-bold">
-                      {editForm.isActive ? 'مفعل ويستطيع استخدام كافة المميزات' : 'معلق في انتظار التفعيل'}
+                      {editForm.isBlocked ? 'التطبيق محجوب على هذا الحساب 🚫' : 'التطبيق متاح للاستخدام بشكل طبيعي ✅'}
                     </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setEditForm(prev => ({ ...prev, isActive: !prev.isActive }))}
+                    onClick={() => setEditForm(prev => ({ ...prev, isBlocked: !prev.isBlocked }))}
                     className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                      editForm.isActive 
-                        ? 'bg-emerald-600 text-white shadow' 
-                        : 'bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                      editForm.isBlocked 
+                        ? 'bg-rose-600 text-white shadow' 
+                        : 'bg-emerald-600 text-white shadow'
                     }`}
                   >
-                    {editForm.isActive ? 'مفعل' : 'معلق'}
+                    {editForm.isBlocked ? 'محجوب 🚫' : 'متاح ✅'}
                   </button>
                 </div>
 
@@ -994,6 +1053,83 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Send Custom WhatsApp Subscription Message */}
+        {messagingUser && (
+          <div className="fixed inset-0 z-[700] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
+            <div 
+              className={`w-full max-w-lg rounded-[2.5rem] border-2 shadow-2xl p-6 sm:p-8 relative ${
+                isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+              dir={isRtl ? 'rtl' : 'ltr'}
+            >
+              <button 
+                onClick={() => setMessagingUser(null)} 
+                className={`absolute top-5 ${isRtl ? 'left-5' : 'right-5'} p-2 rounded-full hover:bg-slate-500/10 text-slate-400 cursor-pointer`}
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+                  <MessageSquare size={24} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg">إرسال رسالة خاصة من أجل الاشتراك</h3>
+                  <p className="text-xs text-slate-500 font-bold">
+                    إلى: <strong>{messagingUser.displayName}</strong> ({messagingUser.phone || 'بدون رقم مسجل'})
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-1.5">
+                    نص الرسالة التي ستُرسل عبر الواتساب (يمكنك التعديل عليها بحرية):
+                  </label>
+                  <textarea
+                    rows={8}
+                    value={customMsgText}
+                    onChange={(e) => setCustomMsgText(e.target.value)}
+                    className={`w-full p-3.5 rounded-2xl border-2 font-bold outline-none text-xs leading-relaxed ${
+                      isDarkMode ? 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-emerald-500'
+                    }`}
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] font-bold text-amber-700 dark:text-amber-300">
+                  💡 عند الضغط على إرسال، سيتم فتح محادثة الواتساب فوراً مع الأستاذ بالرسالة المجهزة.
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMessagingUser(null)}
+                    className="flex-1 py-3 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-black text-xs cursor-pointer hover:opacity-80"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      adminSendSubscriptionRequestWhatsApp(messagingUser, customMsgText);
+                      setMessagingUser(null);
+                      setFeedback({
+                        type: 'success',
+                        message: `تم فتح الواتساب لإرسال رسالة الاشتراك إلى ${messagingUser.displayName} بنجاح!`
+                      });
+                    }}
+                    className="flex-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <MessageSquare size={16} />
+                    <span>إرسال الرسالة عبر الواتساب</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

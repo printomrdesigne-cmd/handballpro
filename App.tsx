@@ -12,13 +12,20 @@ import { PenaltyShootout } from './components/PenaltyShootout.tsx';
 import { ScheduleManager } from './components/ScheduleManager.tsx';
 import { SubscriptionModal } from './components/SubscriptionModal.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
-import { getDemoMatch } from './utils/demoMatch.ts';
 import { getSubscriptionState, SubscriptionState } from './utils/subscriptionService.ts';
-import { subscribeToAuth, fetchUserProfile, assignUserProStatus, UserProfile, CENTRAL_MANAGER_EMAIL, isCentralManagerEmail } from './utils/firebase.ts';
+import { 
+  subscribeToAuth, 
+  fetchUserProfile, 
+  assignUserProStatus, 
+  adminFetchSubscriberStats,
+  UserProfile, 
+  CENTRAL_MANAGER_EMAIL, 
+  isCentralManagerEmail 
+} from './utils/firebase.ts';
 import { translations, getStoredLanguage, setStoredLanguage } from './utils/translations.ts';
 import { PWAInstallButton } from './components/PWAInstallButton.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
-import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound } from 'lucide-react';
+import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound, MessageSquare } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
@@ -101,7 +108,27 @@ const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register'>('login');
   const isCentralManager = isCentralManagerEmail(currentUser?.email);
-  const isAccountActive = Boolean(currentUser?.isActive || currentUser?.isPro || subscription.isPro);
+  // An account is active if it's the central manager OR if the user is activated and NOT blocked
+  const isUserBlocked = Boolean(currentUser?.isBlocked && !isCentralManager);
+  const isAccountActive = Boolean(currentUser && (isCentralManager || (currentUser.isActive && !currentUser.isBlocked)));
+
+  // Subscriber statistics for Central Manager
+  const [subscriberStats, setSubscriberStats] = useState<{ total: number; active: number; closed: number }>({ total: 0, active: 0, closed: 0 });
+
+  const refreshSubscriberStats = useCallback(async () => {
+    try {
+      const stats = await adminFetchSubscriberStats();
+      setSubscriberStats(stats);
+    } catch (e) {
+      console.warn('Could not fetch subscriber stats', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isCentralManager) {
+      refreshSubscriberStats();
+    }
+  }, [isCentralManager, refreshSubscriberStats]);
 
   // Multilingual Support (ar / fr / en)
   const [lang, setLang] = useState<AppLanguage>(() => getStoredLanguage());
@@ -120,7 +147,7 @@ const App: React.FC = () => {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
 
-  // Account Activation Gate Modal
+  // Account Activation / Blocked Gate Modal
   const [showActivationGate, setShowActivationGate] = useState(false);
   const [activationGateReason, setActivationGateReason] = useState('');
 
@@ -131,22 +158,30 @@ const App: React.FC = () => {
         const profile = await fetchUserProfile(firebaseUser.uid);
         if (profile) {
           setCurrentUser(profile);
-          if (profile.isPro) {
-            setSubscription(prev => ({
-              ...prev,
-              isPro: true,
-              planId: profile.planId || 'club_yearly',
-              licenseKey: profile.licenseKey || 'ACCOUNT-ACTIVE',
-              clubName: profile.clubName
-            }));
-          }
+          const active = Boolean(isCentralManagerEmail(profile.email) || (profile.isActive && !profile.isBlocked));
+          setSubscription(prev => ({
+            ...prev,
+            isPro: active,
+            planId: profile.planId || 'club_yearly',
+            licenseKey: profile.licenseKey || (active ? 'ACTIVE' : 'PENDING'),
+            clubName: profile.clubName
+          }));
         } else {
-          setCurrentUser({
+          const isManager = isCentralManagerEmail(firebaseUser.email);
+          const newProf = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             displayName: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مشترك'),
-            isPro: false
-          });
+            isActive: isManager,
+            isPro: isManager,
+            isBlocked: false
+          };
+          setCurrentUser(newProf);
+          setSubscription(prev => ({
+            ...prev,
+            isPro: isManager,
+            licenseKey: isManager ? 'ACTIVE' : 'PENDING'
+          }));
         }
       } else {
         setCurrentUser(null);
@@ -161,15 +196,6 @@ const App: React.FC = () => {
       assignUserProStatus(currentUser.uid, newSub.planId || 'club_yearly', newSub.licenseKey || 'PRO-KEY', currentUser.clubName);
       setCurrentUser(prev => prev ? { ...prev, isPro: true, planId: newSub.planId, licenseKey: newSub.licenseKey } : null);
     }
-  };
-
-  const startDemoMatch = () => {
-    const demo = getDemoMatch();
-    setMatch(demo);
-    setHistory([]);
-    setEditSetupData(null);
-    setPreSelectedScheduledMatch(null);
-    setView('match');
   };
 
   const matchRef = useRef<MatchState | null>(null);
@@ -261,17 +287,25 @@ const App: React.FC = () => {
   };
 
   const requireActiveAccount = (actionName: string = t.newMatch): boolean => {
-    const isExpired = !isCentralManager && Boolean(currentUser?.subscriptionExpiresAt && new Date(currentUser.subscriptionExpiresAt).getTime() < Date.now());
-    const isActivated = Boolean(currentUser && subscription.isPro && !isExpired);
-    if (!isActivated) {
-      if (isExpired) {
-        setActivationGateReason(lang === 'ar' ? 'انتهت صلاحية الانخراط السنوي (30 درهم) - يرجى تجديد الحساب عبر المسير المركزي' : 'Abonnement annuel expiré (30 DH) - Renouvellement requis');
-      } else {
-        setActivationGateReason(actionName);
-      }
+    // If not logged in, request login
+    if (!currentUser) {
+      setActivationGateReason(lang === 'ar' ? 'يرجى تسجيل الدخول بحسابك أولاً للاستفادة من التطبيق وإدارة المباريات.' : 'Veuillez vous connecter pour continuer.');
       setShowActivationGate(true);
       return false;
     }
+
+    // If account is closed or not activated
+    if (!isAccountActive) {
+      setActivationGateReason(
+        currentUser.blockReason || 
+        (lang === 'ar' 
+          ? 'حسابك مغلق أو في انتظار التفعيل من قِبل المسير المركزي. يرجى التواصل مع الإدارة لتفعيل حسابك.'
+          : 'Votre compte est fermé ou en attente d\'activation par le gestionnaire.')
+      );
+      setShowActivationGate(true);
+      return false;
+    }
+
     return true;
   };
 
@@ -1198,13 +1232,6 @@ const App: React.FC = () => {
                     </div>
                   </button>
                 )}
-                {/* Demo Mode: only show if account is not activated */}
-                {!isAccountActive && (
-                  <button onClick={() => { startDemoMatch(); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                    <Sparkles size={18} /> {t.demoMode}
-                  </button>
-                )}
-
                 {/* License: only show if account is not activated */}
                 {!isAccountActive && (
                   <button onClick={() => { setSubscriptionModalTab('activate'); setShowSubscriptionModal(true); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-amber-600 dark:text-amber-400">
@@ -1291,32 +1318,12 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Central Manager Floating Side Dock Icon / Button removed from interface as requested */}
-
-      {/* Demo Match Banner - Only show if match is demo AND account is NOT active */}
-      {match?.isDemo && !isAccountActive && (
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-600 to-blue-700 text-white px-3 sm:px-4 py-2 text-xs font-black flex flex-wrap items-center justify-between gap-2 shadow-md shrink-0 z-[105]">
-          <div className="flex items-center gap-2">
-            <span className="bg-white/20 px-2 py-0.5 rounded text-[10px] uppercase font-mono tracking-wider shrink-0">⚡ MODE DÉMO</span>
-            <span className="truncate">{t.demoWatermark}</span>
-          </div>
-          <button 
-            onClick={() => setShowSubscriptionModal(true)}
-            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1 rounded-xl font-black text-xs shadow-md transition-all hover:scale-105 flex items-center gap-1.5 cursor-pointer shrink-0"
-          >
-            <KeyRound size={14} />
-            <span>تفعيل الحساب عبر الواتساب</span>
-          </button>
-        </div>
-      )}
-
       <main className="flex-1 flex flex-col overflow-hidden">
         {view === 'setup_choice' && (
           <div className="p-4 max-w-2xl mx-auto w-full h-full overflow-y-auto">
             <SetupChoice 
               schedule={schedule} 
               onChoice={handleNewMatchChoice} 
-              onStartDemo={isAccountActive ? undefined : startDemoMatch}
               onOpenSubscription={() => {
                 setSubscriptionModalTab('activate');
                 setShowSubscriptionModal(true);
@@ -1329,6 +1336,7 @@ const App: React.FC = () => {
               onOpenAuth={() => setShowAuthModal(true)}
               isPro={isAccountActive}
               isCentralManager={isCentralManager}
+              subscriberStats={subscriberStats}
               isDarkMode={isDarkMode} 
               lang={lang}
             />
@@ -1543,12 +1551,16 @@ const App: React.FC = () => {
       {/* Central Manager & WhatsApp Activation Modal */}
       <SubscriptionModal 
         isOpen={showSubscriptionModal} 
-        onClose={() => setShowSubscriptionModal(false)} 
+        onClose={() => {
+          setShowSubscriptionModal(false);
+          refreshSubscriberStats();
+        }} 
         subscription={subscription} 
         onUpdateSubscription={handleUpdateSubscription} 
         currentUser={currentUser}
         onUpdateCurrentUser={(profile) => {
           setCurrentUser(profile);
+          refreshSubscriberStats();
           if (profile?.isActive) {
             setSubscription(prev => ({
               ...prev,
@@ -1600,56 +1612,87 @@ const App: React.FC = () => {
               <X size={20} />
             </button>
 
-            <div className="w-16 h-16 rounded-3xl bg-amber-500/20 text-amber-500 mx-auto flex items-center justify-center mb-4 border border-amber-500/30">
-              <Lock size={32} />
+            <div className={`w-16 h-16 rounded-3xl mx-auto flex items-center justify-center mb-4 border ${
+              currentUser && !isAccountActive ? 'bg-amber-500/20 text-amber-500 border-amber-500/30' : 'bg-blue-500/20 text-blue-500 border-blue-500/30'
+            }`}>
+              {currentUser && !isAccountActive ? <Lock size={32} /> : <User size={32} />}
             </div>
 
             <h3 className="text-xl font-black mb-2">
-              {t.activationRequiredTitle}
+              {currentUser && !isAccountActive 
+                ? (lang === 'ar' ? 'الحساب في انتظار التفعيل أو مغلق' : 'Compte en attente d\'activation') 
+                : (lang === 'ar' ? 'تسجيل الدخول إلى التطبيق' : t.activationRequiredTitle)}
             </h3>
             <p className={`text-xs font-bold leading-relaxed mb-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
-              {t.activationRequiredDesc}
+              {activationGateReason || (currentUser && !isAccountActive
+                ? (lang === 'ar' ? 'يقوم المسير المركزي بمراجعة وتفعيل الحسابات أو إغلاقها. يمكنك التواصل معه مباشرة لتفعيل حسابك.' : 'Le compte nécessite l\'activation par le gestionnaire.')
+                : (lang === 'ar' ? 'تطبيق HandballScore Pro مخصص للمسجلين. يرجى تسجيل الدخول أو فتح حساب جديد للمتابعة.' : t.activationRequiredDesc))}
             </p>
-            <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-[11px] font-black text-blue-600 dark:text-blue-400 mb-6">
-              {t.activationRequiredSub}
-            </div>
 
-            <div className="flex flex-col gap-2.5">
-              <button
-                onClick={() => {
-                  setShowActivationGate(false);
-                  setAuthModalInitialMode('register');
-                  setShowAuthModal(true);
-                }}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
-              >
-                <User size={18} />
-                <span>{lang === 'ar' ? 'فتح حساب جديد وتفعيل الكود' : t.loginOrRegister}</span>
-              </button>
+            {currentUser && !isAccountActive ? (
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs font-bold text-slate-700 dark:text-slate-200 leading-relaxed text-start space-y-1">
+                  <p>👤 <strong>الاسم:</strong> {currentUser.displayName || 'أستاذ'}</p>
+                  <p>📧 <strong>البريد:</strong> {currentUser.email}</p>
+                  {currentUser.phone && <p>📱 <strong>الهاتف:</strong> {currentUser.phone}</p>}
+                  {currentUser.clubName && <p>🏫 <strong>المؤسسة/النادي:</strong> {currentUser.clubName}</p>}
+                  <p className="pt-1.5 text-amber-700 dark:text-amber-400 font-black text-[11px] border-t border-amber-500/20">
+                    {lang === 'ar' 
+                      ? 'لطلب التفعيل الفوري، يرجى مراسلة المسير المركزي مباشرة عبر الواتساب.'
+                      : 'Pour activer immédiatement votre compte, veuillez contacter le gestionnaire via WhatsApp.'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const text = encodeURIComponent(`السلام عليكم ورحمة الله، أنا الأستاذ: *${currentUser.displayName || currentUser.email}*
+البريد الإلكتروني: ${currentUser.email}
+رقم الهاتف: ${currentUser.phone || ''}
+المؤسسة: ${currentUser.clubName || ''}
+لقد سجلت في تطبيق HandballScore Pro، وأطلب منكم التفضل بتفعيل حسابي للاستفادة من مميزات التطبيق. شكراً لكم!`);
+                    window.open(`https://wa.me/?text=${text}`, '_blank');
+                  }}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
+                >
+                  <MessageSquare size={18} />
+                  <span>{lang === 'ar' ? 'مراسلة المسير المركزي عبر الواتساب لتفعيل الحساب' : 'Contacter le gestionnaire WhatsApp'}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowActivationGate(false);
+                    setShowAuthModal(true);
+                  }}
+                  className="w-full py-2.5 text-xs font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                >
+                  {lang === 'ar' ? 'تسجيل الخروج أو التبديل إلى حساب آخر' : 'Changer de compte'}
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={() => {
+                    setShowActivationGate(false);
+                    setAuthModalInitialMode('login');
+                    setShowAuthModal(true);
+                  }}
+                  className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
+                >
+                  <User size={18} />
+                  <span>{lang === 'ar' ? 'تسجيل الدخول إلى حسابك' : t.login}</span>
+                </button>
 
-              <button
-                onClick={() => {
-                  setShowActivationGate(false);
-                  setSubscriptionModalTab('activate');
-                  setShowSubscriptionModal(true);
-                }}
-                className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-white font-black text-sm rounded-2xl shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
-              >
-                <KeyRound size={18} />
-                <span>{t.enterLicenseKey}</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setShowActivationGate(false);
-                  startDemoMatch();
-                }}
-                className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs rounded-2xl border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Sparkles size={16} className="text-indigo-500" />
-                <span>{t.tryDemoInstead}</span>
-              </button>
-            </div>
+                <button
+                  onClick={() => {
+                    setShowActivationGate(false);
+                    setAuthModalInitialMode('register');
+                    setShowAuthModal(true);
+                  }}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-black text-xs rounded-2xl border border-slate-300 dark:border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus size={16} />
+                  <span>{lang === 'ar' ? 'إنشاء حساب جديد مجاناً' : 'Créer un compte'}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

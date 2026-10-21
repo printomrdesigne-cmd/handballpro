@@ -62,6 +62,9 @@ export interface UserProfile {
   clubName?: string;
   isPro?: boolean;
   isActive: boolean; // Managed manually by Central Manager
+  isBlocked?: boolean; // Set by Central Manager to block user from using the app
+  blockedAt?: string;
+  blockReason?: string;
   activationCode?: string; // Code sent via WhatsApp
   planId?: string;
   licenseKey?: string;
@@ -307,12 +310,13 @@ export const registerWithEmail = async (
     displayName: displayName.trim() || cleanEmail.split('@')[0],
     phone: phone.trim(),
     clubName: clubName?.trim() || '',
-    isActive: isActivated, // Activated immediately if valid code is supplied or if manager
+    isActive: isActivated, // Manager or entered valid code is active; new subscribers require Central Manager activation
     isPro: isActivated,
+    isBlocked: false,
     subscriptionPrice: ANNUAL_SUBSCRIPTION_PRICE,
     activationCode: cleanCode || '',
-    licenseKey: isActivated ? (cleanCode || 'ACTIVE') : '',
-    subscriptionExpiresAt: isActivated ? defaultExpiry.toISOString() : undefined,
+    licenseKey: cleanCode || (isActivated ? 'ACTIVE' : 'PENDING'),
+    subscriptionExpiresAt: defaultExpiry.toISOString(),
     createdAt: new Date().toISOString()
   };
 
@@ -702,3 +706,157 @@ export const assignUserProStatus = async (
 ): Promise<void> => {
   await adminDirectlyActivateUser(uid, true);
 };
+
+/**
+ * Central Manager: Block or Unblock a user from accessing the application
+ */
+export const adminBlockUser = async (
+  uid: string,
+  isBlocked: boolean,
+  reason?: string
+): Promise<UserProfile | null> => {
+  const profile = await fetchUserProfile(uid);
+  if (!profile) return null;
+
+  const now = new Date().toISOString();
+  const updated: UserProfile = {
+    ...profile,
+    isBlocked,
+    blockedAt: isBlocked ? now : undefined,
+    blockReason: isBlocked ? (reason || 'يرجى تجديد الاشتراك السنوي أو التواصل مع المسير المركزي لتفعيل الحساب.') : undefined,
+    updatedAt: now
+  };
+
+  try {
+    await setDoc(doc(db, 'users', uid), updated, { merge: true });
+  } catch (e) {
+    console.warn('Firestore update error', e);
+  }
+
+  const allCached = getCachedUsers();
+  saveCachedUsers([...allCached.filter(u => u.uid !== uid), updated]);
+  return updated;
+};
+
+/**
+ * Central Manager: Directly activate or close a subscriber's account
+ */
+export const adminToggleAccountStatus = async (
+  uid: string,
+  setActive: boolean,
+  reason?: string
+): Promise<UserProfile | null> => {
+  const profile = await fetchUserProfile(uid);
+  if (!profile) return null;
+
+  const now = new Date().toISOString();
+  const nextYear = new Date();
+  nextYear.setFullYear(nextYear.getFullYear() + 1);
+
+  const updated: UserProfile = {
+    ...profile,
+    isActive: setActive,
+    isPro: setActive,
+    isBlocked: !setActive,
+    blockedAt: !setActive ? now : undefined,
+    blockReason: !setActive ? (reason || 'تم إغلاق الحساب من قِبل المسير المركزي.') : undefined,
+    licenseKey: setActive ? (profile.licenseKey || 'ACTIVE') : 'CLOSED',
+    subscriptionExpiresAt: setActive ? (profile.subscriptionExpiresAt || nextYear.toISOString()) : profile.subscriptionExpiresAt,
+    updatedAt: now
+  };
+
+  try {
+    await setDoc(doc(db, 'users', uid), updated, { merge: true });
+  } catch (e) {
+    console.warn('Firestore update error', e);
+  }
+
+  const allCached = getCachedUsers();
+  saveCachedUsers([...allCached.filter(u => u.uid !== uid), updated]);
+  return updated;
+};
+
+/**
+ * Central Manager: Send WhatsApp notification that the subscriber account has been activated
+ */
+export const adminSendActivationSuccessWhatsApp = (
+  user: UserProfile
+): { whatsappUrl: string } => {
+  const phoneClean = (user.phone || '').replace(/[^0-9+]/g, '');
+  const teacherName = user.displayName || 'الأستاذ الكريم';
+  const appOrigin = window.location.origin;
+
+  const msg = 
+`مرحباً بالأستاذ/المسؤول *${teacherName}* 🤾‍♂️،
+
+تهانينا! لقد قام المسير المركزي بتفعيل حسابك بنجاح في تطبيق *HandballScore Pro*.
+
+✅ **حالة الحساب:** مفعل ومتاح للاستخدام
+🔗 **رابط الدخول للتطبيق:** ${appOrigin}
+
+يمكنك الآن تسجيل الدخول مباشرة بحسابك والاستفادة من جميع المميزات (التحكيم الرقمي المباشر، العمل بدون إنترنت، واستخراج ورقة المباراة الرسمية).
+
+مع تحيات المسير المركزي.`;
+
+  const whatsappUrl = phoneClean 
+    ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+  window.open(whatsappUrl, '_blank');
+  return { whatsappUrl };
+};
+
+/**
+ * Fetch subscriber count metrics for Central Manager
+ */
+export const adminFetchSubscriberStats = async (): Promise<{
+  total: number;
+  active: number;
+  closed: number;
+}> => {
+  const allUsers = await adminFetchAllUsers();
+  // Central manager not counted as a subscriber
+  const subscribers = allUsers.filter(u => !isCentralManagerEmail(u.email));
+  const active = subscribers.filter(u => u.isActive && !u.isBlocked).length;
+  const closed = subscribers.filter(u => !u.isActive || u.isBlocked).length;
+  return {
+    total: subscribers.length,
+    active,
+    closed
+  };
+};
+
+/**
+ * Central Manager: Send a personalized subscription invitation WhatsApp message to a user
+ */
+export const adminSendSubscriptionRequestWhatsApp = (
+  user: UserProfile,
+  customMsg?: string
+): { whatsappUrl: string } => {
+  const phoneClean = (user.phone || '').replace(/[^0-9+]/g, '');
+  const teacherName = user.displayName || 'الأستاذ الكريم';
+  const appOrigin = window.location.origin;
+
+  const msg = customMsg?.trim() || 
+`مرحباً بالأستاذ/المسؤول *${teacherName}* 🤾‍♂️،
+
+تحية رياضية طيبة من إدارة تطبيق *HandballScore Pro* لإدارة وتحكيم مباريات كرة اليد.
+
+نود إعلامكم بضرورة تسوية أو تجديد الانخراط السنوي (واجب الاشتراك الرمز: 30 درهم فقط) للاستمرار في الاستفادة من كافة خصائص ومميزات التطبيق (التحكيم الرقمي، ورقة المباراة الرسمية A4، واستخدام التطبيق بدون إنترنت).
+
+📌 **للتسوية أو الاستفسار:** يرجى الرد على هذه الرسالة أو التواصل مع المسير المركزي مباشرة.
+🔗 رابط التطبيق: ${appOrigin}
+
+مع خالص التقدير والاحترام،
+إدارة التطبيق / المسير المركزي.`;
+
+  const whatsappUrl = phoneClean 
+    ? `https://wa.me/${phoneClean}?text=${encodeURIComponent(msg)}`
+    : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+  window.open(whatsappUrl, '_blank');
+  return { whatsappUrl };
+};
+
+
+
