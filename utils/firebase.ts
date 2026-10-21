@@ -33,12 +33,11 @@ export async function testFirestoreConnection() {
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore offline / cached mode active.');
-    }
+    // Gracefully handle offline or unavailable backend without throwing unhandled promise rejections
+    console.warn('Firestore operating in offline/cached mode:', error instanceof Error ? error.message : error);
   }
 }
-testFirestoreConnection();
+testFirestoreConnection().catch(() => {});
 
 export const CENTRAL_MANAGER_EMAIL = 'printomrdesigne@gmail.com';
 export const CENTRAL_MANAGER_EMAILS = [
