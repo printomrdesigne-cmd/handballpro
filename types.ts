@@ -67,6 +67,8 @@ export interface PenaltyShot {
 export interface MatchDetails {
   direction: string;
   aref: string;
+  ligue?: string;
+  competition?: string;
   categorie: string;
   ville: string;
   lieu: string;

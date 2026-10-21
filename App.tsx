@@ -193,6 +193,15 @@ const App: React.FC = () => {
     if (savedMatch && !match) {
         try {
             const parsed = JSON.parse(savedMatch);
+            // Clean stale demo values if present from older demo states
+            if (parsed && parsed.details) {
+              if (parsed.details.aref === 'عصبة الرباط سلا القنيطرة') {
+                parsed.details.aref = '';
+              }
+              if (parsed.details.direction === 'الجامعة الملكية المغربية لكرة اليد') {
+                parsed.details.direction = '';
+              }
+            }
             // Only restore if we are in initial state
             setMatch(parsed);
             setView('match');
@@ -1282,35 +1291,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Central Manager Floating Side Dock Icon / Button (Visible ONLY to Central Manager) */}
-      {isCentralManager && (
-        <aside 
-          className={`fixed ${isRtl ? 'left-0' : 'right-0'} top-1/2 -translate-y-1/2 z-[140] print:hidden pointer-events-auto`}
-          aria-label="إعدادات تسيير المنخرطين"
-        >
-          <button
-            onClick={() => {
-              setSubscriptionModalTab('manager');
-              setShowSubscriptionModal(true);
-            }}
-            className={`group flex items-center gap-2 py-3 px-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 hover:from-amber-400 hover:to-emerald-500 text-white font-black text-xs shadow-2xl shadow-amber-950/50 border-y ${
-              isRtl ? 'rounded-r-2xl border-r border-amber-300/40 hover:translate-x-1' : 'rounded-l-2xl border-l border-amber-300/40 hover:-translate-x-1'
-            } transition-all active:scale-95 cursor-pointer`}
-            title="إعدادات تسيير: تفعيل حسابات المنخرطين وتسيير الاشتراكات"
-          >
-            <div className="flex flex-col items-start leading-tight">
-              <span className="text-[10px] text-amber-200 uppercase tracking-widest font-extrabold flex items-center gap-1">
-                <Crown size={12} className="text-amber-200 animate-bounce" />
-                <span>المسير المركزي</span>
-              </span>
-              <span className="text-xs font-black drop-shadow-sm">إعدادات تسيير</span>
-            </div>
-            <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0 shadow-inner group-hover:rotate-12 transition-transform">
-              <ShieldCheck size={18} className="text-white" />
-            </div>
-          </button>
-        </aside>
-      )}
+      {/* Central Manager Floating Side Dock Icon / Button removed from interface as requested */}
 
       {/* Demo Match Banner - Only show if match is demo AND account is NOT active */}
       {match?.isDemo && !isAccountActive && (

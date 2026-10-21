@@ -66,8 +66,9 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 }) => {
   const isCentralManager = isCentralManagerEmail(currentUser?.email);
   
+  // Exclusively for Central Manager
   const [tab, setTab] = useState<'activate' | 'manager'>(
-    initialTab || (isCentralManager ? 'manager' : 'activate')
+    initialTab && isCentralManager ? initialTab : (isCentralManager ? 'manager' : 'activate')
   );
   const [inputCode, setInputCode] = useState('');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -98,7 +99,9 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   useEffect(() => {
     if (isCentralManager) {
       setIsManagerUnlocked(true);
-      if (!initialTab) setTab('manager');
+      setTab('manager');
+    } else {
+      setTab('activate');
     }
   }, [isCentralManager, initialTab]);
 

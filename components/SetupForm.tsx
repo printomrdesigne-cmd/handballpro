@@ -206,8 +206,8 @@ export const SetupForm: React.FC<SetupFormProps> = ({
   const [activeTab, setActiveTab] = useState<'details' | 'teamA' | 'teamB' | 'officials'>('details');
 
   const [details, setDetails] = useState<MatchDetails>(initialDetails || {
-    direction: 'تاوريرت', 
-    aref: 'الشرق', 
+    direction: '', 
+    aref: '', 
     categorie: initialMatch?.category || 'ذكور U15 - البطولة المدرسية',
     ville: 'تاوريرت', 
     lieu: initialMatch?.lieu || 'القاعة المغطاة (تاوريرت)', 

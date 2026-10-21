@@ -88,8 +88,10 @@ export const getDemoMatch = (): MatchState => {
   };
 
   const details: MatchDetails = {
-    direction: 'الجامعة الملكية المغربية لكرة اليد',
-    aref: 'عصبة الرباط سلا القنيطرة',
+    direction: '',
+    aref: '',
+    ligue: '',
+    competition: '',
     categorie: 'الكبار - القسم الممتاز (Seniors Excellence)',
     ville: 'الرباط',
     lieu: 'القاعة المغطاة مولاي عبد الله',

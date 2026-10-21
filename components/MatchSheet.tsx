@@ -35,9 +35,31 @@ const SheetHeader = ({ details, lang, sheetSettings, onOpenSettings }: SheetHead
   const logoSrc = effective.logoUrl || '/logo_frmss.png';
   const mainTitleAr = effective.mainTitleAr || 'الجامعة الملكية المغربية\nللرياضة المدرسية';
   const mainTitleFr = effective.mainTitleFr || 'FÉDÉRATION ROYALE MAROCAINE\nDU SPORT SCOLAIRE';
-  const academyName = effective.academy || details.aref || '-';
-  const directionName = effective.direction || details.direction || '-';
-  const competitionName = effective.competition || details.competition || t.sheetCompetition;
+
+  // Helper to clean empty or placeholder '-' values
+  const cleanValue = (val?: string) => {
+    if (!val) return '';
+    const trimmed = String(val).trim();
+    if (trimmed === '-' || trimmed === '—' || trimmed === '--') return '';
+    return trimmed;
+  };
+
+  // If the user has saved custom settings, the sheet strictly adheres to what was entered in settings!
+  const hasCustomSettings = typeof window !== 'undefined' && Boolean(localStorage.getItem('handball_sheet_custom_settings'));
+
+  // Discard stale hardcoded values from old demo match state if they ever leak
+  const rawAref = details.aref === 'عصبة الرباط سلا القنيطرة' ? '' : details.aref;
+  const rawDirection = details.direction === 'الجامعة الملكية المغربية لكرة اليد' ? '' : details.direction;
+
+  const leagueName = cleanValue(effective.league) || (!hasCustomSettings ? cleanValue(details.ligue) : '');
+  const academyName = cleanValue(effective.academy) || (!hasCustomSettings ? cleanValue(rawAref) : '');
+  const directionName = cleanValue(effective.direction) || (!hasCustomSettings ? cleanValue(rawDirection) : '');
+  const competitionName = cleanValue(effective.competition) || cleanValue(details.competition) || t.sheetCompetition;
+
+  const hasLeague = Boolean(leagueName);
+  const hasAcademy = Boolean(academyName);
+  const hasDirection = Boolean(directionName);
+  const hasAnyRegionalInfo = hasLeague || hasAcademy || hasDirection;
 
   return (
     <div className="border-2 border-black mb-1 font-sans text-black relative group" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -84,25 +106,46 @@ const SheetHeader = ({ details, lang, sheetSettings, onOpenSettings }: SheetHead
       </div>
 
       {/* COMPETITION INFO BAR */}
-      <div className="flex h-8 border-black text-white">
-        {/* Info Box: Academy & Direction */}
-        <div className={`w-[42%] flex flex-col justify-center px-2 text-[9px] font-bold bg-white text-black leading-tight ${isRtl ? 'border-l-2' : 'border-r-2'} border-black`} style={{ letterSpacing: 'normal' }}>
-          <div className="flex justify-between items-center border-b border-gray-300 pb-0.5 mb-0.5">
-            <span className="text-gray-700 font-bold">{t.academy}:</span>
-            <span className="font-black uppercase truncate text-black">{academyName}</span>
+      <div className="flex min-h-8 border-black text-white">
+        {!hasAnyRegionalInfo ? (
+          /* When neither League, Academy, nor Directorate is specified, stretch banner cleanly across full width without '-' */
+          <div className="w-full flex items-center justify-center bg-green-700 print:bg-green-700 py-1.5 px-3 text-center">
+            <span className="font-black text-xs sm:text-sm text-white drop-shadow-sm" style={{ letterSpacing: 'normal' }}>
+              {competitionName} {details.categorie ? `— ${details.categorie}` : ''}
+            </span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700 font-bold">{t.direction}:</span>
-            <span className="font-black uppercase truncate text-black">{directionName}</span>
-          </div>
-        </div>
+        ) : (
+          <>
+            {/* Info Box: Only show fields that are actually specified (No '-' dashes!) */}
+            <div className={`w-[45%] flex flex-col justify-center px-2 py-0.5 text-[9px] font-bold bg-white text-black leading-tight gap-0.5 ${isRtl ? 'border-l-2' : 'border-r-2'} border-black`} style={{ letterSpacing: 'normal' }}>
+              {hasLeague && (
+                <div className={`flex justify-between items-center ${hasAcademy || hasDirection ? 'border-b border-gray-300 pb-0.5' : ''}`}>
+                  <span className="text-gray-700 font-bold">{t.league}:</span>
+                  <span className="font-black uppercase truncate text-black">{leagueName}</span>
+                </div>
+              )}
+              {hasAcademy && (
+                <div className={`flex justify-between items-center ${hasDirection ? 'border-b border-gray-300 pb-0.5' : ''}`}>
+                  <span className="text-gray-700 font-bold">{t.academy}:</span>
+                  <span className="font-black uppercase truncate text-black">{academyName}</span>
+                </div>
+              )}
+              {hasDirection && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-700 font-bold">{t.direction}:</span>
+                  <span className="font-black uppercase truncate text-black">{directionName}</span>
+                </div>
+              )}
+            </div>
 
-        {/* Championship & Category Banner */}
-        <div className="flex-1 flex items-center justify-center bg-green-700 print:bg-green-700 px-2 text-center">
-          <span className="font-black text-xs sm:text-sm text-white drop-shadow-sm" style={{ letterSpacing: 'normal' }}>
-            {competitionName} — {details.categorie || t.category}
-          </span>
-        </div>
+            {/* Championship & Category Banner */}
+            <div className="flex-1 flex items-center justify-center bg-green-700 print:bg-green-700 px-2 text-center">
+              <span className="font-black text-xs sm:text-sm text-white drop-shadow-sm" style={{ letterSpacing: 'normal' }}>
+                {competitionName} {details.categorie ? `— ${details.categorie}` : ''}
+              </span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -736,17 +779,7 @@ export const MatchSheet: React.FC<{
 
       {/* Top Controls Bar (hidden during printing/exporting) */}
       <div className="w-full max-w-5xl mb-2 flex flex-wrap justify-between items-center gap-2 print:hidden px-1">
-        {match.isDemo && !isAccountActive ? (
-          <div className="flex items-center gap-2 bg-blue-600/10 text-blue-900 border border-blue-400/30 px-3 py-1.5 rounded-xl text-xs font-black">
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-            <span>{t.demoWatermark}</span>
-          </div>
-        ) : (
-          <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300"></span>
-            <span>{t.officialMatchSheet}</span>
-          </div>
-        )}
+        <div></div>
 
         <div className="flex items-center gap-2 flex-wrap">
           {/* 1. Dedicated Match Sheet & Logo Settings Button */}
@@ -770,16 +803,7 @@ export const MatchSheet: React.FC<{
             <span>{currentLang === 'ar' ? 'حفظ كصورة' : 'Image PNG'}</span>
           </button>
 
-          {/* 3. Export as PDF */}
-          <button 
-            onClick={handleDownload} 
-            disabled={isExporting}
-            className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-red-600/30 transition-all cursor-pointer disabled:opacity-50 hover:scale-105 active:scale-95"
-            title="تصدير ورقة المباراة كملف PDF رسمي متناسق"
-          >
-            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
-            <span>{isExporting ? (currentLang === 'ar' ? 'جاري تصدير PDF...' : 'Export PDF...') : 'PDF'}</span>
-          </button>
+
 
           {/* 4. Send via WhatsApp / Image Share */}
           <button 
@@ -1257,6 +1281,18 @@ export const MatchSheet: React.FC<{
         isDarkMode={false}
         onSettingsSaved={(newSettings) => {
           setSheetSettings(newSettings);
+          if (onUpdate && match) {
+            onUpdate({
+              ...match,
+              details: {
+                ...match.details,
+                ligue: newSettings.league || '',
+                aref: newSettings.academy || '',
+                direction: newSettings.direction || '',
+                competition: newSettings.competition || match.details.competition
+              }
+            });
+          }
           setShowSettingsModal(false);
         }}
       />

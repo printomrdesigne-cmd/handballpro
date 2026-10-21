@@ -4,6 +4,7 @@ export interface Translations {
   // Common & Navigation
   appTitle: string;
   appSubtitle: string;
+  home: string;
   newMatch: string;
   scheduleManager: string;
   archive: string;
@@ -108,6 +109,7 @@ export interface Translations {
   sheetTitleMain: string;
   sheetTitleSub: string;
   sheetCompetition: string;
+  league: string;
   academy: string;
   direction: string;
   category: string;
@@ -170,6 +172,7 @@ export const translations: Record<AppLanguage, Translations> = {
   ar: {
     appTitle: 'HandballScore Pro',
     appSubtitle: 'النظام الرقمي الاحترافي لإدارة مباريات كرة اليد',
+    home: 'الرئيسية',
     newMatch: 'مباراة جديدة',
     scheduleManager: 'برمجة المقابلات',
     archive: 'سجل المباريات',
@@ -270,6 +273,7 @@ export const translations: Record<AppLanguage, Translations> = {
     sheetTitleMain: 'الجامعة الملكية المغربية للرياضة المدرسية',
     sheetTitleSub: 'FÉDÉRATION ROYALE MAROCAINE DU SPORT SCOLAIRE',
     sheetCompetition: 'البطولة المدرسية',
+    league: 'العصبة',
     academy: 'الأكاديمية',
     direction: 'المديرية',
     category: 'الفئة',
@@ -330,6 +334,7 @@ export const translations: Record<AppLanguage, Translations> = {
   fr: {
     appTitle: 'HandballScore Pro',
     appSubtitle: 'Système numérique professionnel pour matchs de Handball',
+    home: 'Accueil',
     newMatch: 'Nouveau Match',
     scheduleManager: 'Programme des Matchs',
     archive: 'Archives des Matchs',
@@ -430,6 +435,7 @@ export const translations: Record<AppLanguage, Translations> = {
     sheetTitleMain: 'FÉDÉRATION ROYALE MAROCAINE DU SPORT SCOLAIRE',
     sheetTitleSub: 'الجامعة الملكية المغربية للرياضة المدرسية',
     sheetCompetition: 'Championnat Scolaire',
+    league: 'Ligue',
     academy: 'Académie',
     direction: 'Direction',
     category: 'Catégorie',
@@ -590,6 +596,7 @@ export const translations: Record<AppLanguage, Translations> = {
     sheetTitleMain: 'ROYAL MOROCCAN FEDERATION OF SCHOOL SPORT',
     sheetTitleSub: 'الجامعة الملكية المغربية للرياضة المدرسية',
     sheetCompetition: 'School Championship',
+    league: 'League',
     academy: 'Academy',
     direction: 'District',
     category: 'Category',

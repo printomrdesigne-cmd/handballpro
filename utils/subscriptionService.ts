@@ -137,7 +137,8 @@ export const validateLicenseKey = (key: string): { valid: boolean; message: stri
   const testKeys: Record<string, { planId: 'club_yearly' | 'tournament' | 'league'; name: string }> = {
     'DEMO-PRO-2026': { planId: 'club_yearly', name: 'Licence Test Club Pro' },
     'HANDBALL-PRO-VIP': { planId: 'league', name: 'Licence Ligue & Fédérale' },
-    'CLUB-2026-ACTIVE': { planId: 'club_yearly', name: 'Licence Club Annuelle' }
+    'CLUB-2026-ACTIVE': { planId: 'club_yearly', name: 'Licence Club Annuelle' },
+    'XG15L0H': { planId: 'club_yearly', name: 'Licence Club Pro (xG15L0h)' }
   };
 
   if (testKeys[cleanKey]) {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { SheetSettings, getSheetSettings, saveSheetSettings, DEFAULT_SHEET_SETTINGS } from '../utils/sheetSettings.ts';
+import { SheetSettings, getSheetSettings, saveSheetSettings, DEFAULT_SHEET_SETTINGS, MOROCCAN_LEAGUES } from '../utils/sheetSettings.ts';
 import { AppLanguage } from '../types.ts';
-import { Settings, Upload, Image as ImageIcon, RotateCcw, Check, X, Building2, Shield, Eye, FileText, Info } from 'lucide-react';
+import { Settings, Upload, Image as ImageIcon, RotateCcw, Check, X, Building2, Shield, Eye, FileText, Info, Trophy, MapPin } from 'lucide-react';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -239,51 +239,138 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Academy, Directorate & Competition */}
+          {/* Section 3: League, Academy, Directorate & Competition */}
           <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="font-black text-sm flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-              <FileText size={16} />
-              <span>{isRtl ? 'الأكاديمية والمديرية والمسابقة الافتراضية' : 'Académie, Direction et Compétition'}</span>
-            </h3>
+            <div>
+              <h3 className="font-black text-sm flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                <MapPin size={16} />
+                <span>{isRtl ? 'تحديد العصبة، الأكاديمية، والمديرية والمسابقة' : 'Ligue, Académie, Direction et Compétition'}</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                {isRtl 
+                  ? '💡 ملحوظة هامة: لن تظهر علامة (-) في ورقة التحكيم أبداً. يظهر فقط ما يتم تحديده هنا، وإذا تركتها فارغة سيمتد شريط البطولة بكامل العرض بشكل منظم وجميل.' 
+                  : '💡 Note : Aucun tiret (-) ne sera affiché sur la feuille si un champ est laissé vide.'}
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-700 dark:text-slate-300">
-                  {isRtl ? 'الأكاديمية الجهوية (AREF):' : 'Académie Régionale :'}
+              {/* Regional League (العصبة) with quick selector */}
+              <div className="space-y-1.5 sm:col-span-2 bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/20">
+                <label className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Trophy size={14} className="text-emerald-600" />
+                    <span>{isRtl ? 'العصبة الجهوية (Ligue):' : 'Ligue Régionale :'}</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    {isRtl ? '(اختر من القائمة أو اكتب اسماً مخصصاً)' : '(Sélectionnez ou saisissez)'}
+                  </span>
                 </label>
-                <input
-                  type="text"
-                  value={settings.academy}
-                  onChange={e => setSettings(prev => ({ ...prev, academy: e.target.value }))}
-                  placeholder="مثال: جهة الشرق / الدار البيضاء سطات..."
-                  className={`w-full p-2.5 rounded-xl border-2 text-xs font-bold outline-none ${
-                    isDarkMode ? 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
-                  }`}
-                />
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <select
+                    value={MOROCCAN_LEAGUES.includes(settings.league || '') ? (settings.league || '') : ''}
+                    onChange={e => {
+                      if (e.target.value) {
+                        setSettings(prev => ({ ...prev, league: e.target.value }));
+                      }
+                    }}
+                    className={`p-2.5 rounded-xl border-2 text-xs font-bold outline-none cursor-pointer sm:w-1/2 ${
+                      isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                    }`}
+                  >
+                    <option value="">{isRtl ? '-- اختيار العصبة من القائمة الرسمية --' : '-- Choisir une ligue --'}</option>
+                    {MOROCCAN_LEAGUES.map(league => (
+                      <option key={league} value={league}>{league}</option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="text"
+                    value={settings.league || ''}
+                    onChange={e => setSettings(prev => ({ ...prev, league: e.target.value }))}
+                    placeholder={isRtl ? 'أو اكتب اسم العصبة هنا مباشرة...' : 'Ou saisir la ligue directement...'}
+                    className={`flex-1 p-2.5 rounded-xl border-2 text-xs font-bold outline-none ${
+                      isDarkMode ? 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
+                    }`}
+                  />
+
+                  {settings.league && (
+                    <button
+                      type="button"
+                      onClick={() => setSettings(prev => ({ ...prev, league: '' }))}
+                      className="px-2.5 py-2 text-slate-400 hover:text-rose-500 text-xs font-bold rounded-xl transition"
+                      title={isRtl ? 'مسح العصبة' : 'Effacer'}
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </div>
               </div>
 
+              {/* Academy */}
               <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-700 dark:text-slate-300">
-                  {isRtl ? 'المديرية الإقليمية (Direction):' : 'Direction Provinciale :'}
+                <label className="text-[11px] font-black text-slate-700 dark:text-slate-300 flex justify-between">
+                  <span>{isRtl ? 'الأكاديمية الجهوية (AREF):' : 'Académie Régionale :'}</span>
+                  <span className="text-[10px] text-slate-400 font-normal">{isRtl ? '(اختياري)' : '(Optionnel)'}</span>
                 </label>
-                <input
-                  type="text"
-                  value={settings.direction}
-                  onChange={e => setSettings(prev => ({ ...prev, direction: e.target.value }))}
-                  placeholder="مثال: مديرية تاوريرت / فجيج / الرباط..."
-                  className={`w-full p-2.5 rounded-xl border-2 text-xs font-bold outline-none ${
-                    isDarkMode ? 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
-                  }`}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={settings.academy || ''}
+                    onChange={e => setSettings(prev => ({ ...prev, academy: e.target.value }))}
+                    placeholder={isRtl ? 'اتركه فارغاً لعدم إظهاره...' : 'Laisser vide pour masquer...'}
+                    className={`w-full p-2.5 rounded-xl border-2 text-xs font-bold outline-none ${
+                      isDarkMode ? 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
+                    }`}
+                  />
+                  {settings.academy && (
+                    <button
+                      type="button"
+                      onClick={() => setSettings(prev => ({ ...prev, academy: '' }))}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
 
+              {/* Directorate */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-700 dark:text-slate-300 flex justify-between">
+                  <span>{isRtl ? 'المديرية الإقليمية (Direction):' : 'Direction Provinciale :'}</span>
+                  <span className="text-[10px] text-slate-400 font-normal">{isRtl ? '(اختياري)' : '(Optionnel)'}</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={settings.direction || ''}
+                    onChange={e => setSettings(prev => ({ ...prev, direction: e.target.value }))}
+                    placeholder={isRtl ? 'اتركه فارغاً لعدم إظهاره...' : 'Laisser vide pour masquer...'}
+                    className={`w-full p-2.5 rounded-xl border-2 text-xs font-bold outline-none ${
+                      isDarkMode ? 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500' : 'bg-white border-slate-300 text-slate-900 focus:border-emerald-500'
+                    }`}
+                  />
+                  {settings.direction && (
+                    <button
+                      type="button"
+                      onClick={() => setSettings(prev => ({ ...prev, direction: '' }))}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Competition Title */}
               <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-[11px] font-black text-slate-700 dark:text-slate-300">
                   {isRtl ? 'اسم البطولة / التظاهرة الرياضية الافتراضية:' : 'Nom de la compétition :'}
                 </label>
                 <input
                   type="text"
-                  value={settings.competition}
+                  value={settings.competition || ''}
                   onChange={e => setSettings(prev => ({ ...prev, competition: e.target.value }))}
                   placeholder="البطولة الوطنية المدرسية لكرة اليد"
                   className={`w-full p-2.5 rounded-xl border-2 text-xs font-bold outline-none ${
@@ -298,40 +385,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-1.5 text-xs font-black text-slate-600 dark:text-slate-300">
               <Eye size={15} className="text-blue-500" />
-              <span>{isRtl ? 'معاينة حية لشكل ترويسة ورقة المباراة:' : 'Aperçu en direct de l\'en-tête :'}</span>
+              <span>{isRtl ? 'معاينة حية لشكل ترويسة ورقة المباراة (بدون شرطات فارغة):' : 'Aperçu en direct de l\'en-tête :'}</span>
             </div>
 
-            <div className="p-2 bg-white text-black rounded-xl border-2 border-black shadow-sm overflow-hidden">
-              <div className="flex border-b border-black h-16 text-center">
-                {/* Side 1: Arabic Title */}
-                <div className="w-1/3 flex items-center justify-center p-1 border-l border-black text-[10px] font-black leading-tight text-green-900 whitespace-pre-line">
-                  {settings.mainTitleAr || 'العنوان الرئيسي بالعربية'}
-                </div>
-                {/* Logo */}
-                <div className="w-1/3 flex items-center justify-center p-1">
-                  <img
-                    src={logoPreview || 'https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=150&output=png'}
-                    alt="Preview"
-                    className="h-12 max-w-full object-contain"
-                  />
-                </div>
-                {/* Side 2: French Title */}
-                <div className="w-1/3 flex items-center justify-center p-1 border-r border-black text-[7.5px] font-black uppercase leading-tight text-green-900 whitespace-pre-line">
-                  {settings.mainTitleFr || 'TITRE EN FRANÇAIS'}
-                </div>
-              </div>
+            {(() => {
+              const hasPrevLeague = Boolean(settings.league && settings.league.trim() && settings.league.trim() !== '-');
+              const hasPrevAcademy = Boolean(settings.academy && settings.academy.trim() && settings.academy.trim() !== '-');
+              const hasPrevDirection = Boolean(settings.direction && settings.direction.trim() && settings.direction.trim() !== '-');
+              const hasAnyPrevInfo = hasPrevLeague || hasPrevAcademy || hasPrevDirection;
 
-              {/* Sub bar */}
-              <div className="flex h-6 text-[8px] font-bold">
-                <div className="w-[45%] flex items-center justify-between px-2 border-l border-black bg-gray-50">
-                  <span>الأكاديمية: {settings.academy || '-'}</span>
-                  <span>المديرية: {settings.direction || '-'}</span>
+              return (
+                <div className="p-2 bg-white text-black rounded-xl border-2 border-black shadow-sm overflow-hidden">
+                  <div className="flex border-b border-black h-16 text-center">
+                    {/* Side 1: Arabic Title */}
+                    <div className="w-1/3 flex items-center justify-center p-1 border-l border-black text-[10px] font-black leading-tight text-green-900 whitespace-pre-line">
+                      {settings.mainTitleAr || 'العنوان الرئيسي بالعربية'}
+                    </div>
+                    {/* Logo */}
+                    <div className="w-1/3 flex items-center justify-center p-1">
+                      <img
+                        src={logoPreview || 'https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=150&output=png'}
+                        alt="Preview"
+                        className="h-12 max-w-full object-contain"
+                      />
+                    </div>
+                    {/* Side 2: French Title */}
+                    <div className="w-1/3 flex items-center justify-center p-1 border-r border-black text-[7.5px] font-black uppercase leading-tight text-green-900 whitespace-pre-line">
+                      {settings.mainTitleFr || 'TITRE EN FRANÇAIS'}
+                    </div>
+                  </div>
+
+                  {/* Sub bar without empty dashes */}
+                  <div className="flex min-h-6 text-[8px] font-bold">
+                    {hasAnyPrevInfo ? (
+                      <>
+                        <div className="w-[45%] flex flex-col justify-center px-2 py-0.5 border-l border-black bg-gray-50 leading-tight gap-0.5">
+                          {hasPrevLeague && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 font-bold">{isRtl ? 'العصبة:' : 'Ligue:'}</span>
+                              <span className="font-black text-black truncate">{settings.league}</span>
+                            </div>
+                          )}
+                          {hasPrevAcademy && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 font-bold">{isRtl ? 'الأكاديمية:' : 'Académie:'}</span>
+                              <span className="font-black text-black truncate">{settings.academy}</span>
+                            </div>
+                          )}
+                          {hasPrevDirection && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-600 font-bold">{isRtl ? 'المديرية:' : 'Direction:'}</span>
+                              <span className="font-black text-black truncate">{settings.direction}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 bg-green-700 text-white flex items-center justify-center font-black px-2">
+                          {settings.competition || 'البطولة المدرسية'}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="w-full bg-green-700 text-white flex items-center justify-center font-black py-1.5 px-2">
+                        {settings.competition || 'البطولة المدرسية'}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1 bg-green-700 text-white flex items-center justify-center font-black">
-                  {settings.competition || 'البطولة المدرسية'}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
         </div>
 
