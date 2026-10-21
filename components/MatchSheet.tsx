@@ -777,161 +777,84 @@ export const MatchSheet: React.FC<{
         onChange={handleFileUpload}
       />
 
-      {/* Top Controls Bar (hidden during printing/exporting) */}
-      <div className="w-full max-w-5xl mb-2 flex flex-wrap justify-between items-center gap-2 print:hidden px-1">
-        <div></div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* 1. Dedicated Match Sheet & Logo Settings Button */}
-          <button 
-            onClick={() => setShowSettingsModal(true)} 
-            className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-blue-600/30 transition-all cursor-pointer hover:scale-105 active:scale-95 border border-blue-400/30"
-            title={currentLang === 'ar' ? 'إعدادات ورقة المباراة، الشعار، الأكاديمية والمديرية' : 'Paramètres feuille & Logo'}
+      {/* Centered Minimalist Icon Toolbar (Hidden during printing/exporting) */}
+      <div className="w-full flex justify-center items-center my-2 sm:my-3 print:hidden px-2">
+        <div className="inline-flex items-center justify-center flex-wrap gap-1.5 sm:gap-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl sm:rounded-full border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-300/40 dark:shadow-black/50 transition-all max-w-full">
+          {/* 1. Sheet & Logo Settings */}
+          <button
+            type="button"
+            onClick={() => setShowSettingsModal(true)}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200 dark:border-indigo-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
+            title={currentLang === 'ar' ? 'إعدادات ورقة التحكيم، الشعار، الأكاديمية والمديرية' : 'Paramètres de la feuille & Logo'}
+            aria-label="Settings"
           >
-            <SettingsIcon size={16} />
-            <span>{currentLang === 'ar' ? 'إعدادات ورقة التحكيم والشعار' : 'Paramètres'}</span>
+            <SettingsIcon size={18} />
           </button>
 
-          {/* 2. Direct Download as Image (PNG) */}
-          <button 
-            onClick={handleDownloadDirectImage} 
+          {/* 2. Download PDF */}
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={isExporting}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 dark:hover:text-white border border-rose-200 dark:border-rose-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
+            title={currentLang === 'ar' ? 'تحميل ورقة المباراة بصيغة PDF للطباعة والحفظ' : 'Télécharger la feuille en PDF'}
+            aria-label="Download PDF"
+          >
+            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+          </button>
+
+          {/* 3. Download PNG Image */}
+          <button
+            type="button"
+            onClick={handleDownloadDirectImage}
             disabled={isCapturingImage}
-            className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-teal-600/30 transition-all cursor-pointer disabled:opacity-50 hover:scale-105 active:scale-95"
-            title="تحميل ورقة المباراة كصورة PNG عالية الدقة"
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-teal-50 hover:bg-teal-600 text-teal-600 hover:text-white dark:bg-teal-950/60 dark:text-teal-300 dark:hover:bg-teal-600 dark:hover:text-white border border-teal-200 dark:border-teal-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
+            title={currentLang === 'ar' ? 'تحميل ورقة المباراة كصورة PNG عالية الدقة' : 'Télécharger comme image PNG'}
+            aria-label="Save as Image"
           >
-            {isCapturingImage ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={16} />}
-            <span>{currentLang === 'ar' ? 'حفظ كصورة' : 'Image PNG'}</span>
+            {isCapturingImage ? <Loader2 size={18} className="animate-spin" /> : <ImageIcon size={18} />}
           </button>
 
-
-
-          {/* 4. Send via WhatsApp / Image Share */}
-          <button 
-            onClick={handleShareWhatsAppImage} 
+          {/* 4. Share via WhatsApp */}
+          <button
+            type="button"
+            onClick={handleShareWhatsAppImage}
             disabled={isCapturingImage}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-lg shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 hover:scale-105 active:scale-95"
-            title="إرسال ورقة المباراة كصورة عبر واتساب"
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white dark:bg-emerald-950/60 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white border border-emerald-200 dark:border-emerald-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
+            title={currentLang === 'ar' ? 'إرسال ومشاركة ورقة المباراة عبر واتساب' : 'Partager via WhatsApp'}
+            aria-label="Share WhatsApp"
           >
-            <MessageCircle size={16} />
-            <span>{currentLang === 'ar' ? 'مشاركة واتساب' : 'WhatsApp'}</span>
+            <MessageCircle size={18} />
           </button>
 
-          {/* 5. Upload external paper sheet or signed document (Image or PDF) */}
-          <button 
-            onClick={() => fileInputRef.current?.click()} 
-            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs sm:text-sm flex gap-1.5 items-center shadow-md transition-all cursor-pointer hover:scale-105 active:scale-95"
-            title="رفع ورقة مباراة أو وثيقة موقعة (صورة أو PDF) وإرفاقها بالمباراة"
-          >
-            <Upload size={15} />
-            <span>{attachedDoc ? (currentLang === 'ar' ? 'تغيير الوثيقة المرفقة' : 'Changer doc') : (currentLang === 'ar' ? 'رفع وثيقة (صورة/PDF)' : 'Téléverser doc')}</span>
-          </button>
-
+          {/* 6. View Attached Document (if present) */}
           {attachedDoc && (
-            <button 
-              onClick={() => setShowDocModal(true)} 
-              className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black text-xs sm:text-sm flex gap-1.5 items-center shadow-md transition-all cursor-pointer animate-pulse"
-              title="معاينة الوثيقة المرفقة"
+            <button
+              type="button"
+              onClick={() => setShowDocModal(true)}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-md transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer animate-pulse"
+              title={currentLang === 'ar' ? 'معاينة الوثيقة المرفقة' : 'Voir le document joint'}
+              aria-label="View attachment"
             >
-              <Paperclip size={15} />
-              <span>{currentLang === 'ar' ? 'عرض المرفق' : 'Voir doc'}</span>
+              <Paperclip size={18} />
             </button>
           )}
 
-          {/* 6. Print Button */}
-          <button 
-            onClick={handlePrint} 
-            className="px-3 py-2 bg-black hover:bg-slate-800 text-white rounded-xl font-bold text-xs sm:text-sm flex gap-1.5 items-center shadow-lg transition-all cursor-pointer hover:scale-105"
-            title="طباعة ورقة المباراة A4"
-          >
-            <Printer size={16}/> {t.printBtn}
-          </button>
-
-          {/* Language Switcher on Sheet Toolbar */}
-          <div className="flex items-center bg-white rounded-xl border border-slate-300 p-0.5 shadow-sm text-xs font-bold">
-            <Globe size={14} className="text-slate-500 mx-1.5" />
-            <button
-              onClick={() => toggleLanguage('ar')}
-              className={`px-2 py-1 rounded-lg transition-all ${currentLang === 'ar' ? 'bg-blue-600 text-white font-black' : 'text-slate-700 hover:bg-slate-100'}`}
-            >
-              العربية
-            </button>
-            <button
-              onClick={() => toggleLanguage('fr')}
-              className={`px-2 py-1 rounded-lg transition-all ${currentLang === 'fr' ? 'bg-blue-600 text-white font-black' : 'text-slate-700 hover:bg-slate-100'}`}
-            >
-              FR
-            </button>
-            <button
-              onClick={() => toggleLanguage('en')}
-              className={`px-2 py-1 rounded-lg transition-all ${currentLang === 'en' ? 'bg-blue-600 text-white font-black' : 'text-slate-700 hover:bg-slate-100'}`}
-            >
-              EN
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Mobile Fit & Zoom Controls Bar */}
-      <div className="w-full max-w-4xl flex flex-wrap items-center justify-between gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur border border-slate-300 dark:border-slate-800 px-3 py-2 rounded-2xl shadow-sm mb-3 print:hidden">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1">
-            <Smartphone size={15} className="text-blue-600" />
-            <span>{currentLang === 'ar' ? 'عرض شاشة الهاتف:' : 'Affichage mobile:'}</span>
-          </span>
-
+          {/* 9. Language Switcher (Icon-only: click to cycle ar -> fr -> en) */}
           <button
-            onClick={() => { setZoomMode('fit'); setCustomScale(null); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-              zoomMode === 'fit' && customScale === null
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-            title="ملاءمة ورقة المباراة كاملة في حدود جوانب شاشة الهاتف"
+            type="button"
+            onClick={() => toggleLanguage(currentLang === 'ar' ? 'fr' : currentLang === 'fr' ? 'en' : 'ar')}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-slate-100 hover:bg-blue-600 text-slate-700 hover:text-white dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-blue-600 dark:hover:text-white border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
+            title={
+              currentLang === 'ar'
+                ? 'اللغة الحالية: العربية (انقر للتبديل إلى الفرنسية أو الإنجليزية)'
+                : currentLang === 'fr'
+                ? 'Langue actuelle: Français (cliquer pour changer)'
+                : 'Current language: English (click to change)'
+            }
+            aria-label="Switch Language"
           >
-            <Maximize2 size={13} />
-            <span>{currentLang === 'ar' ? 'ملاءمة الشاشة (كاملة)' : 'Ajuster à l\'écran'}</span>
-          </button>
-
-          <button
-            onClick={() => { setZoomMode('actual'); setCustomScale(1); }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-              (zoomMode === 'actual' || customScale === 1)
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-            title="عرض بالحجم الفعلي 100% مع إمكانية التمرير"
-          >
-            <ZoomIn size={13} />
-            <span>{currentLang === 'ar' ? 'الحجم الفعلي (100%)' : 'Taille réelle (100%)'}</span>
-          </button>
-        </div>
-
-        {/* Zoom adjuster */}
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => {
-              const next = Math.max(0.35, effectiveScale - 0.1);
-              setCustomScale(parseFloat(next.toFixed(2)));
-            }}
-            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 cursor-pointer"
-            title="تصغير"
-          >
-            <ZoomOut size={14} />
-          </button>
-
-          <span className="font-mono text-xs font-black px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-lg min-w-[42px] text-center">
-            {Math.round(effectiveScale * 100)}%
-          </span>
-
-          <button
-            onClick={() => {
-              const next = Math.min(1.5, effectiveScale + 0.1);
-              setCustomScale(parseFloat(next.toFixed(2)));
-            }}
-            className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 cursor-pointer"
-            title="تكبير"
-          >
-            <ZoomIn size={14} />
+            <Globe size={18} />
           </button>
         </div>
       </div>
