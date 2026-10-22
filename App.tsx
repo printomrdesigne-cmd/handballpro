@@ -25,6 +25,8 @@ import {
 import { translations, getStoredLanguage, setStoredLanguage } from './utils/translations.ts';
 import { PWAInstallButton } from './components/PWAInstallButton.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
+import { HomeDashboard } from './components/HomeDashboard.tsx';
+import { SplashAnimation } from './components/SplashAnimation.tsx';
 import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound, MessageSquare } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -55,7 +57,8 @@ const PERIOD_ORDER = [
 ];
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'setup' | 'setup_choice' | 'match' | 'sheet' | 'archive' | 'admin_schedule'>('setup_choice');
+  const [view, setView] = useState<'home' | 'setup' | 'setup_choice' | 'match' | 'sheet' | 'archive' | 'admin_schedule'>('home');
+  const [showSplash, setShowSplash] = useState(true);
   const [match, setMatch] = useState<MatchState | null>(null);
   const [history, setHistory] = useState<MatchState[]>([]); // Historique local de la session (undo/redo)
   
@@ -1187,26 +1190,46 @@ const App: React.FC = () => {
                   <PWAInstallButton lang={lang} variant="menu" />
                 </div>
 
-                {/* Match Controls if Active */}
+                {/* 1. الرئيسية (Home Dashboard) */}
+                <button onClick={() => { setView('home'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
+                  <Trophy size={18} /> {lang === 'ar' ? 'الرئيسية والإحصائيات' : 'Accueil'}
+                </button>
+
+                {/* 2. مباراة جديدة / الإعداد */}
+                <button onClick={() => { setView('setup_choice'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
+                  <Plus size={18} /> {t.newMatch}
+                </button>
+
+                {/* 3. المقابلة الحالية إذا كانت نشطة */}
                 {match && (
                   <>
-                    <button onClick={() => { setView('match'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
+                    <button onClick={() => { setView('match'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-emerald-600 dark:text-emerald-400">
                       <Play size={18} /> {t.resume}
                     </button>
                     <button onClick={() => { setView('sheet'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-green-600 dark:text-green-400">
                       <ClipboardList size={18} /> {t.matchSheet}
                     </button>
-                    <div className="h-px bg-slate-200 dark:bg-slate-800 my-1" />
                   </>
                 )}
 
-                {/* Global Controls */}
-                <button onClick={() => { setView('setup_choice'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
-                  <Plus size={18} /> {t.newMatch}
+                {/* 4. أرشيف المباريات */}
+                <button onClick={() => { setView('archive'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
+                  <History size={18} /> {t.archive}
                 </button>
+
+                {/* 5. جدول المقابلات */}
+                <button onClick={() => { handleSettingsClick(); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
+                  <SettingsIcon size={18} /> {t.scheduleManager}
+                </button>
+
+                <div className="h-px bg-slate-200 dark:bg-slate-800 my-1" />
+
+                {/* 6. حساب المستخدم */}
                 <button onClick={() => { setShowAuthModal(true); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
                   <User size={18} /> {currentUser ? `${currentUser.displayName || currentUser.email}` : t.login}
                 </button>
+
+                {/* 7. لوحة المسير المركزي (إذا كان مسيراً مركزياً) */}
                 {isCentralManager && (
                   <button 
                     onClick={() => { 
@@ -1222,33 +1245,27 @@ const App: React.FC = () => {
                       </div>
                       <div>
                         <div className="font-black text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                          <span>إعدادات تسيير</span>
-                          <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black">خاص بالمسير</span>
+                          <span>لوحة تسيير المنخرطين</span>
+                          <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black">المسير</span>
                         </div>
                         <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
-                          تفعيل حسابات المنخرطين وإدارة الاشتراكات
+                          تفعيل وغلق الحسابات والمشتركين
                         </div>
                       </div>
                     </div>
                   </button>
                 )}
-                {/* License: only show if account is not activated */}
+
+                {/* 8. تفعيل الحساب إذا لم يكن مفعلاً */}
                 {!isAccountActive && (
                   <button onClick={() => { setSubscriptionModalTab('activate'); setShowSubscriptionModal(true); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-amber-600 dark:text-amber-400">
                     <Crown size={18} /> {t.license}
                   </button>
                 )}
 
-                <button onClick={() => { setView('archive'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
-                  <History size={18} /> {t.archive}
-                </button>
-                <button onClick={() => { handleSettingsClick(); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
-                  <SettingsIcon size={18} /> {t.scheduleManager}
-                </button>
-                
                 <div className="h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
-                {/* Toggles: hide timer speed for activated accounts */}
+                {/* 9. إعدادات المظهر واللغة */}
                 {!isAccountActive && (
                   <button onClick={() => { setTimerSpeed(prev => prev === 1 ? 10 : 1); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
                     <Zap size={18} className={timerSpeed > 1 ? 'text-amber-500' : ''} /> {t.scoreboardSpeed}: {timerSpeed}x
@@ -1260,6 +1277,7 @@ const App: React.FC = () => {
 
                 <div className="h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
+                {/* 10. حول التطبيق */}
                 <button onClick={() => { setShowAbout(true); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
                   <Info size={18} /> {t.about}
                 </button>
@@ -1318,7 +1336,34 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {showSplash && (
+        <SplashAnimation onComplete={() => setShowSplash(false)} lang={lang} isDarkMode={isDarkMode} />
+      )}
+
       <main className="flex-1 flex flex-col overflow-hidden">
+        {view === 'home' && (
+          <div className="p-4 sm:p-6 max-w-5xl mx-auto w-full h-full overflow-y-auto">
+            <HomeDashboard 
+              match={match}
+              archive={archive}
+              schedule={schedule}
+              currentUser={currentUser}
+              isPro={isAccountActive}
+              isCentralManager={isCentralManager}
+              subscriberStats={subscriberStats}
+              onNavigate={setView}
+              onNewMatch={() => setView('setup_choice')}
+              onOpenAuth={() => setShowAuthModal(true)}
+              onOpenSubscription={() => {
+                setSubscriptionModalTab('activate');
+                setShowSubscriptionModal(true);
+              }}
+              isDarkMode={isDarkMode}
+              lang={lang}
+            />
+          </div>
+        )}
+
         {view === 'setup_choice' && (
           <div className="p-4 max-w-2xl mx-auto w-full h-full overflow-y-auto">
             <SetupChoice 
