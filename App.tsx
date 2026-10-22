@@ -66,7 +66,13 @@ const App: React.FC = () => {
   const [archive, setArchive] = useState<MatchState[]>(() => {
     try {
       const stored = localStorage.getItem('handball_archive');
-      return stored ? JSON.parse(stored) : [];
+      if (stored) {
+        const parsed: MatchState[] = JSON.parse(stored);
+        const cleaned = parsed.filter(m => !m.isDemo && m.details?.numRencontre !== 'DEMO-2026-01' && m.homeTeam?.name !== 'الوداد الرياضي (WAC)');
+        localStorage.setItem('handball_archive', JSON.stringify(cleaned));
+        return cleaned;
+      }
+      return [];
     } catch (e) {
       console.error("Failed to load archive", e);
       return [];
@@ -79,7 +85,20 @@ const App: React.FC = () => {
   const [timerSpeed, setTimerSpeed] = useState(1);
 
   // New State for Schedule (Local Only)
-  const [schedule, setSchedule] = useState<ScheduledMatch[]>([]);
+  const [schedule, setSchedule] = useState<ScheduledMatch[]>(() => {
+    try {
+      const stored = localStorage.getItem('handball_schedule');
+      if (stored) {
+        const parsed: ScheduledMatch[] = JSON.parse(stored);
+        const cleaned = parsed.filter(m => !m.isDemo && m.homeTeam !== 'الوداد الرياضي');
+        localStorage.setItem('handball_schedule', JSON.stringify(cleaned));
+        return cleaned;
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [preSelectedScheduledMatch, setPreSelectedScheduledMatch] = useState<ScheduledMatch | null>(null);
   
   // Temporary state to hold data when going back to setup
@@ -222,7 +241,11 @@ const App: React.FC = () => {
     if (savedMatch && !match) {
         try {
             const parsed = JSON.parse(savedMatch);
-            // Clean stale demo values if present from older demo states
+            if (parsed.isDemo || parsed.details?.numRencontre === 'DEMO-2026-01' || parsed.homeTeam?.name === 'الوداد الرياضي (WAC)') {
+              localStorage.removeItem('current_active_match');
+              return;
+            }
+            // Clean stale demo values if present from older states
             if (parsed && parsed.details) {
               if (parsed.details.aref === 'عصبة الرباط سلا القنيطرة') {
                 parsed.details.aref = '';
