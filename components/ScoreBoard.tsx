@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import { MatchState, MatchPeriod, SanctionType, AppLanguage } from '../types.ts';
-import { Play, Pause, Ban, Flag, ChevronLeft, ChevronRight, RotateCcw, Timer } from 'lucide-react';
+import { Play, Pause, Ban, Flag, ChevronLeft, ChevronRight, RotateCcw, Timer, History } from 'lucide-react';
 import { translations } from '../utils/translations.ts';
 
 interface ScoreBoardProps {
@@ -16,6 +16,7 @@ interface ScoreBoardProps {
   lang?: AppLanguage;
   selectedTarget?: { type: 'player' | 'coach' | 'assistant-coach', team: 'home' | 'away', id?: string } | null;
   onScoreGoal?: (team: 'home' | 'away') => void;
+  onOpenEvents?: () => void;
 }
 
 export const ScoreBoard: React.FC<ScoreBoardProps> = ({ 
@@ -30,7 +31,8 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
   isDarkMode = false,
   lang = 'ar',
   selectedTarget,
-  onScoreGoal
+  onScoreGoal,
+  onOpenEvents
 }) => {
   const t = translations[lang];
   const isRtl = lang === 'ar';
@@ -178,19 +180,40 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
         </div>
       )}
 
-      {/* 1. Period Header */}
-      <div className="relative z-10 flex items-center justify-center gap-2 sm:gap-6 mb-2 sm:mb-4 mt-0 sm:mt-1">
-        {onPeriodChange && (
-          <button onClick={() => onPeriodChange(isRtl ? 'prev' : 'next')} className={`p-1 sm:p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-            <ChevronRight size={18} className="sm:w-6 sm:h-6" strokeWidth={3} />
-          </button>
-        )}
-        <div className={`text-xs sm:text-base font-black uppercase tracking-wider ${match.period === MatchPeriod.PENALTIES ? 'text-purple-600' : (isDarkMode ? 'text-slate-200' : 'text-slate-900')}`}>
-          {getPeriodLabel(match.period)}
+      {/* 1. Period Header & Events Log Button */}
+      <div className="relative z-10 flex items-center justify-between sm:justify-center gap-2 sm:gap-6 mb-2 sm:mb-4 mt-0 sm:mt-1 px-1">
+        <div className="flex items-center gap-1 sm:gap-2">
+          {onPeriodChange && (
+            <button onClick={() => onPeriodChange(isRtl ? 'prev' : 'next')} className={`p-1 sm:p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              <ChevronRight size={18} className="sm:w-6 sm:h-6" strokeWidth={3} />
+            </button>
+          )}
+          <div className={`text-xs sm:text-base font-black uppercase tracking-wider ${match.period === MatchPeriod.PENALTIES ? 'text-purple-600' : (isDarkMode ? 'text-slate-200' : 'text-slate-900')}`}>
+            {getPeriodLabel(match.period)}
+          </div>
+          {onPeriodChange && (
+            <button onClick={() => onPeriodChange(isRtl ? 'next' : 'prev')} className={`p-1 sm:p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              <ChevronLeft size={18} className="sm:w-6 sm:h-6" strokeWidth={3} />
+            </button>
+          )}
         </div>
-        {onPeriodChange && (
-          <button onClick={() => onPeriodChange(isRtl ? 'next' : 'prev')} className={`p-1 sm:p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-            <ChevronLeft size={18} className="sm:w-6 sm:h-6" strokeWidth={3} />
+
+        {onOpenEvents && (
+          <button
+            type="button"
+            onClick={onOpenEvents}
+            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl border flex items-center gap-1.5 text-[10px] sm:text-xs font-black shadow-sm transition-all cursor-pointer hover:scale-105 ${
+              isDarkMode 
+                ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-blue-600 hover:text-white' 
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white'
+            }`}
+            title={lang === 'ar' ? 'سجل أحداث المباراة واستيرادها' : 'Journal des événements'}
+          >
+            <History size={14} className="text-blue-500" />
+            <span className="hidden sm:inline">{lang === 'ar' ? 'سجل الأحداث' : 'Événements'}</span>
+            <span className="px-1.5 py-0.2 bg-blue-600 text-white rounded-full text-[9px] font-black">
+              {match.events.length}
+            </span>
           </button>
         )}
       </div>

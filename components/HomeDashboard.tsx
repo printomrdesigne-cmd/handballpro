@@ -15,6 +15,7 @@ interface HomeDashboardProps {
   onNewMatch: () => void;
   onOpenAuth: () => void;
   onOpenSubscription: () => void;
+  onOpenEvents?: () => void;
   isDarkMode: boolean;
   lang?: AppLanguage;
 }
@@ -31,6 +32,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onNewMatch,
   onOpenAuth,
   onOpenSubscription,
+  onOpenEvents,
   isDarkMode,
   lang = 'ar'
 }) => {
@@ -101,6 +103,55 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Active Match Resumption Banner if active match exists */}
+      {match && (
+        <div className={`p-5 sm:p-6 rounded-[2.2rem] border-2 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4 transition-all animate-in fade-in slide-in-from-top-2 ${
+          isDarkMode ? 'bg-gradient-to-r from-emerald-950/40 to-slate-900 border-emerald-500/40' : 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-300 text-slate-900'
+        }`}>
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/30 shrink-0">
+              <Play size={28} className="animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                  {lang === 'ar' ? 'مقابلة جارية الآن' : 'Match en cours'}
+                </span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                  {match.period}
+                </span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black mt-1">
+                <span style={{ color: match.homeTeam.color }}>{match.homeTeam.name}</span>
+                <span className="mx-2 font-mono text-xl">({match.score.home} - {match.score.away})</span>
+                <span style={{ color: match.awayTeam.color }}>{match.awayTeam.name}</span>
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            {onOpenEvents && (
+              <button
+                onClick={onOpenEvents}
+                className="flex-1 md:flex-none px-4 py-3 rounded-xl border border-emerald-500/40 hover:bg-emerald-500/10 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer text-emerald-700 dark:text-emerald-300"
+              >
+                <History size={16} />
+                <span>{lang === 'ar' ? 'سجل الأحداث' : 'Événements'}</span>
+                <span className="px-1.5 py-0.2 bg-emerald-600 text-white rounded-full text-[9px] font-black">{match.events?.length || 0}</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => onNavigate('match')}
+              className="flex-1 md:flex-none px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Play size={16} />
+              <span>{lang === 'ar' ? 'استئناف المباراة' : 'Reprendre le match'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Central Manager Subscriber Quick Stats Banner */}
       {isCentralManager && subscriberStats && (

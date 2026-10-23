@@ -158,6 +158,7 @@ export interface ScheduledMatch {
   category: string;
   officials: Officials;
   centerPassword?: string;
+  isDemo?: boolean;
 }
 
 export interface SubscriptionPlan {

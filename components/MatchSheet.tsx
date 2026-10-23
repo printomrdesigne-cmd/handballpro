@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { MatchState, SanctionType, Player, Team, MatchEvent, MatchPeriod, AppLanguage } from '../types.ts';
-import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut, Upload, FileText, Paperclip, Trash2, ExternalLink } from 'lucide-react';
+import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut, Upload, FileText, Paperclip, Trash2, ExternalLink, History } from 'lucide-react';
 import { generateMatchSheetPDF } from '../utils/pdfGenerator.ts';
 import { captureElementAsImage, shareMatchSheetImage, downloadImageFile, copyImageToClipboard } from '../utils/imageGenerator.ts';
 import { SignaturePad } from './SignaturePad.tsx';
@@ -490,7 +490,8 @@ export const MatchSheet: React.FC<{
   lang?: AppLanguage;
   onLanguageChange?: (lang: AppLanguage) => void;
   isAccountActive?: boolean;
-}> = ({ match, onUpdate, lang = 'ar', onLanguageChange, isAccountActive = false }) => {
+  onOpenEvents?: () => void;
+}> = ({ match, onUpdate, lang = 'ar', onLanguageChange, isAccountActive = false, onOpenEvents }) => {
   useEffect(() => { ensureFonts(); }, []);
 
   const [currentLang, setCurrentLang] = useState<AppLanguage>(lang);
@@ -790,6 +791,24 @@ export const MatchSheet: React.FC<{
           >
             <SettingsIcon size={18} />
           </button>
+
+          {/* Events Log & Import Button */}
+          {onOpenEvents && (
+            <button
+              type="button"
+              onClick={onOpenEvents}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-600 dark:hover:text-white border border-blue-200 dark:border-blue-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer relative"
+              title={currentLang === 'ar' ? 'سجل أحداث المباراة واستيرادها (JSON)' : 'Journal des événements & Import'}
+              aria-label="Match Events Log"
+            >
+              <History size={18} />
+              {match.events?.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-slate-900 shadow">
+                  {match.events.length > 99 ? '99+' : match.events.length}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* 2. Download PDF */}
           <button

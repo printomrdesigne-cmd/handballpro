@@ -1,19 +1,20 @@
 import React, { useState } from 'react';
 import { MatchState, AppLanguage } from '../types.ts';
-import { Trash2, Eye, Calendar, MapPin, Search, Trophy, AlertTriangle, X } from 'lucide-react';
+import { Trash2, Eye, Calendar, MapPin, Search, Trophy, AlertTriangle, X, History } from 'lucide-react';
 
 interface ArchiveListProps {
   matches: MatchState[];
   isDarkMode: boolean;
   onSelect: (m: MatchState) => void;
   onDelete: (id: string) => void;
+  onOpenEvents?: (m: MatchState) => void;
   lang?: AppLanguage;
 }
 
 /**
  * ArchiveList displays a list of previous matches from local storage.
  */
-export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, onSelect, onDelete, lang = 'ar' }) => {
+export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, onSelect, onDelete, onOpenEvents, lang = 'ar' }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [matchToDelete, setMatchToDelete] = useState<MatchState | null>(null);
 
@@ -137,6 +138,17 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
+                {onOpenEvents && (
+                  <button
+                    onClick={() => onOpenEvents(m)}
+                    className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-200 dark:border-slate-700"
+                    title={lang === 'ar' ? 'سجل الأحداث واستيرادها' : 'Journal des événements'}
+                  >
+                    <History size={15} />
+                    <span className="hidden sm:inline">{lang === 'ar' ? 'الأحداث' : 'Événements'}</span>
+                    <span className="text-[10px] bg-blue-600 text-white rounded-full px-1.5 py-0.2 font-black">{m.events?.length || 0}</span>
+                  </button>
+                )}
                 <button
                   onClick={() => onSelect(m)}
                   className="flex-1 sm:flex-none px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition-all cursor-pointer"

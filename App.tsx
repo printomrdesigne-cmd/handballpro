@@ -12,6 +12,7 @@ import { PenaltyShootout } from './components/PenaltyShootout.tsx';
 import { ScheduleManager } from './components/ScheduleManager.tsx';
 import { SubscriptionModal } from './components/SubscriptionModal.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
+import { MatchEventsModal } from './components/MatchEventsModal.tsx';
 import { getSubscriptionState, SubscriptionState } from './utils/subscriptionService.ts';
 import { 
   subscribeToAuth, 
@@ -119,6 +120,32 @@ const App: React.FC = () => {
   // Menu State
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+
+  // Match Events Log Modal
+  const [showEventsModal, setShowEventsModal] = useState(false);
+  const [eventsTargetMatch, setEventsTargetMatch] = useState<MatchState | null>(null);
+
+  const handleOpenEventsForMatch = (targetMatch: MatchState | null = match) => {
+    if (!targetMatch) return;
+    setEventsTargetMatch(targetMatch);
+    setShowEventsModal(true);
+  };
+
+  const handleUpdateEventsMatch = (updated: MatchState) => {
+    if (match && match.id === updated.id) {
+      setMatch(updated);
+    }
+    setEventsTargetMatch(updated);
+    setArchive(prev => {
+      const idx = prev.findIndex(m => m.id === updated.id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = updated;
+        return next;
+      }
+      return prev;
+    });
+  };
 
   // Subscription / License State
   const [subscription, setSubscription] = useState<SubscriptionState>(() => getSubscriptionState());
@@ -254,9 +281,8 @@ const App: React.FC = () => {
                 parsed.details.direction = '';
               }
             }
-            // Only restore if we are in initial state
+            // Only restore if we are in initial state - Keep view on 'home' as requested
             setMatch(parsed);
-            setView('match');
         } catch (e) {
             console.error("Failed to restore match", e);
         }
@@ -1232,6 +1258,15 @@ const App: React.FC = () => {
                     <button onClick={() => { setView('sheet'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-green-600 dark:text-green-400">
                       <ClipboardList size={18} /> {t.matchSheet}
                     </button>
+                    <button onClick={() => { handleOpenEventsForMatch(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
+                      <div className="flex items-center gap-3">
+                        <History size={18} />
+                        <span>{lang === 'ar' ? 'سجل أحداث المقابلة (استيراد/تصدير)' : 'Journal des événements'}</span>
+                      </div>
+                      <span className="text-[10px] font-black bg-blue-600 text-white rounded-full px-2 py-0.5">
+                        {match.events?.length || 0}
+                      </span>
+                    </button>
                   </>
                 )}
 
@@ -1381,6 +1416,7 @@ const App: React.FC = () => {
                 setSubscriptionModalTab('activate');
                 setShowSubscriptionModal(true);
               }}
+              onOpenEvents={() => handleOpenEventsForMatch(match)}
               isDarkMode={isDarkMode}
               lang={lang}
             />
@@ -1447,6 +1483,7 @@ const App: React.FC = () => {
                     lang={lang}
                     selectedTarget={selectedTarget}
                     onScoreGoal={handleScoreBoardGoal}
+                    onOpenEvents={() => handleOpenEventsForMatch(match)}
                 />
                 {matchToast && (
                   <div className={`py-1.5 px-3 rounded-xl text-center text-xs font-black shadow-md transition-all animate-in fade-in slide-in-from-top-1 border ${
@@ -1488,8 +1525,8 @@ const App: React.FC = () => {
               )}
             </div>
           </div>}
-        {view === 'sheet' && match && <div className="p-4 h-full overflow-y-auto"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} isAccountActive={isAccountActive} /></div>}
-        {view === 'archive' && <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} lang={lang} /></div>}
+        {view === 'sheet' && match && <div className="p-4 h-full overflow-y-auto"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} isAccountActive={isAccountActive} onOpenEvents={() => handleOpenEventsForMatch(match)} /></div>}
+        {view === 'archive' && <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} onOpenEvents={(m) => handleOpenEventsForMatch(m)} lang={lang} /></div>}
         
         {/* Footer Credit */}
         <div className={`py-2 text-center text-[10px] font-bold ${isDarkMode ? 'bg-slate-900 text-slate-500 border-t border-slate-800' : 'bg-white text-slate-600 border-t border-slate-200'}`}>
@@ -1765,6 +1802,20 @@ const App: React.FC = () => {
         </div>
       )}
       
+      {/* Match Events Log & Import Modal */}
+      {showEventsModal && (eventsTargetMatch || match) && (
+        <MatchEventsModal
+          match={eventsTargetMatch || match!}
+          onUpdateMatch={handleUpdateEventsMatch}
+          onClose={() => {
+            setShowEventsModal(false);
+            setEventsTargetMatch(null);
+          }}
+          isDarkMode={isDarkMode}
+          lang={lang}
+        />
+      )}
+
       {/* Offline Status & Connectivity Monitor */}
       <OfflineIndicator lang={lang} />
     </div>
