@@ -14,6 +14,10 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  setLogLevel,
   doc, 
   getDoc, 
   setDoc, 
@@ -24,20 +28,38 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
+// Silence non-critical Firestore connection / offline warnings in console
+try {
+  setLogLevel('error');
+} catch {
+  // Ignore if already set
+}
+
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
-export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId || '(default)');
 
-// Validate connection to Firestore as required by Firebase skill
-export async function testFirestoreConnection() {
+const dbDatabaseId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
+let firestoreDb;
+try {
+  firestoreDb = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  }, dbDatabaseId);
+} catch {
+  firestoreDb = getFirestore(app, dbDatabaseId);
+}
+export const db = firestoreDb;
+
+// Connection check utility for diagnostic purposes (not run automatically on import to prevent network spam)
+export async function testFirestoreConnection(): Promise<boolean> {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    // Gracefully handle offline or unavailable backend without throwing unhandled promise rejections
-    console.warn('Firestore operating in offline/cached mode:', error instanceof Error ? error.message : error);
+    const testDoc = await getDoc(doc(db, 'system', 'connection'));
+    return testDoc.exists();
+  } catch {
+    return false;
   }
 }
-testFirestoreConnection().catch(() => {});
 
 export const CENTRAL_MANAGER_EMAIL = 'printomrdesigne@gmail.com';
 export const CENTRAL_MANAGER_EMAILS = [

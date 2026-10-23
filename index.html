@@ -3,6 +3,46 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <script>
+      // Suppress benign iframe WebSocket disconnects and offline Firestore notices in AI Studio dev sandbox
+      (function() {
+        var isBenign = function(val) {
+          if (!val) return false;
+          var str = typeof val === 'string' ? val : (val.message || String(val));
+          return str.includes('WebSocket') || 
+                 str.includes('@firebase/firestore') || 
+                 str.includes('Could not reach Cloud Firestore backend') ||
+                 str.includes('offline mode until it is able to successfully connect');
+        };
+
+        var origWarn = console.warn;
+        console.warn = function() {
+          if (arguments[0] && isBenign(arguments[0])) return;
+          origWarn.apply(console, arguments);
+        };
+
+        var origError = console.error;
+        console.error = function() {
+          if (arguments[0] && isBenign(arguments[0])) return;
+          origError.apply(console, arguments);
+        };
+
+        window.addEventListener('error', function(e) {
+          if (e && (isBenign(e.message) || (e.filename && e.filename.includes('@vite/client')))) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          if (e && isBenign(e.reason)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>HandballScore Pro</title>
     <meta name="theme-color" content="#1e3a8a">

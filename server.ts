@@ -64,8 +64,7 @@ app.post('/api/ai/analyze-match', async (req: Request, res: Response) => {
 7. توصيات فنية مستقبلية لمدرب كل فريق (Actionable Recommendations).
 `;
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+    const modelConfig = {
       contents: prompt,
       config: {
         systemInstruction: isRtl
@@ -136,7 +135,21 @@ app.post('/api/ai/analyze-match', async (req: Request, res: Response) => {
           ]
         }
       }
-    });
+    };
+
+    let response;
+    try {
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        ...modelConfig
+      });
+    } catch (err1) {
+      console.warn('Gemini 2.5-flash high demand / unavailable, trying fallback gemini-1.5-flash...', err1);
+      response = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        ...modelConfig
+      });
+    }
 
     const text = response.text;
     if (!text) {
@@ -160,7 +173,7 @@ async function startServer() {
 
   if (!isProd) {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
