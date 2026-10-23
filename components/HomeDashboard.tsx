@@ -16,6 +16,7 @@ interface HomeDashboardProps {
   onOpenAuth: () => void;
   onOpenSubscription: () => void;
   onOpenEvents?: () => void;
+  onOpenAnalysis?: () => void;
   isDarkMode: boolean;
   lang?: AppLanguage;
 }
@@ -33,6 +34,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onOpenAuth,
   onOpenSubscription,
   onOpenEvents,
+  onOpenAnalysis,
   isDarkMode,
   lang = 'ar'
 }) => {
@@ -131,6 +133,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
+            {onOpenAnalysis && (
+              <button
+                onClick={onOpenAnalysis}
+                className="flex-1 md:flex-none px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                title={lang === 'ar' ? 'تحليل المقابلة والنتائج وإحصائيات اللاعبين' : 'Analyse du match'}
+              >
+                <BarChart3 size={16} />
+                <span>{lang === 'ar' ? 'تحليل المباراة' : 'Analyse'}</span>
+              </button>
+            )}
+
             {onOpenEvents && (
               <button
                 onClick={onOpenEvents}

@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { MatchState, SanctionType, Player, Team, MatchEvent, MatchPeriod, AppLanguage } from '../types.ts';
-import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut, Upload, FileText, Paperclip, Trash2, ExternalLink, History } from 'lucide-react';
+import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut, Upload, FileText, Paperclip, Trash2, ExternalLink, History, FileSpreadsheet } from 'lucide-react';
 import { generateMatchSheetPDF } from '../utils/pdfGenerator.ts';
 import { captureElementAsImage, shareMatchSheetImage, downloadImageFile, copyImageToClipboard } from '../utils/imageGenerator.ts';
+import { exportMatchToExcel } from '../utils/excelExporter.ts';
 import { SignaturePad } from './SignaturePad.tsx';
 import { translations } from '../utils/translations.ts';
 
@@ -832,6 +833,17 @@ export const MatchSheet: React.FC<{
             aria-label="Save as Image"
           >
             {isCapturingImage ? <Loader2 size={18} className="animate-spin" /> : <ImageIcon size={18} />}
+          </button>
+
+          {/* 4. Download Excel (.xls) with Colors */}
+          <button
+            type="button"
+            onClick={() => exportMatchToExcel(match, currentLang)}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-green-50 hover:bg-green-600 text-green-700 hover:text-white dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-600 dark:hover:text-white border border-green-200 dark:border-green-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
+            title={currentLang === 'ar' ? 'تصدير ورقة وبيانات المباراة كملف Excel منسق وملون' : 'Exporter les données vers Excel'}
+            aria-label="Export to Excel"
+          >
+            <FileSpreadsheet size={18} />
           </button>
 
           {/* 4. Share via WhatsApp */}

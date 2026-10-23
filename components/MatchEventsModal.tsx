@@ -19,14 +19,27 @@ import {
   Trophy, 
   Layers,
   ArrowUpDown,
-  RefreshCw
+  RefreshCw,
+  BarChart3,
+  FileSpreadsheet,
+  Award,
+  TrendingUp,
+  Zap,
+  Clock,
+  ShieldCheck,
+  Share2,
+  MessageCircle,
+  Sparkles,
+  PieChart,
+  Loader2,
+  Printer
 } from 'lucide-react';
 import { 
-  validateAndParseEvents, 
-  recalculateMatchFromEvents, 
-  exportEventsAsJSON,
-  EventsValidationResult
+  recalculateMatchFromEvents
 } from '../utils/eventsManager.ts';
+import { exportMatchToExcel } from '../utils/excelExporter.ts';
+import { analyzeMatch, MatchAnalysisReport } from '../utils/matchAnalysis.ts';
+import { generateAnalysisPDF } from '../utils/analysisPdfGenerator.ts';
 
 interface MatchEventsModalProps {
   match: MatchState;
@@ -34,6 +47,7 @@ interface MatchEventsModalProps {
   onClose: () => void;
   isDarkMode: boolean;
   lang?: AppLanguage;
+  initialTab?: 'timeline' | 'analysis' | 'import_export' | 'add_event';
 }
 
 export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
@@ -41,25 +55,23 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   onUpdateMatch,
   onClose,
   isDarkMode,
-  lang = 'ar'
+  lang = 'ar',
+  initialTab = 'timeline'
 }) => {
-  const isRtl = lang === 'ar';
-  const [activeTab, setActiveTab] = useState<'timeline' | 'import_export' | 'add_event'>('timeline');
+  const activeLang: AppLanguage = (lang as AppLanguage) || 'ar';
+  const isRtl = activeLang === 'ar';
+  const [activeTab, setActiveTab] = useState<'timeline' | 'analysis' | 'import_export' | 'add_event'>(initialTab);
 
-  // Filter & Search states
+  // Filter & Search states for timeline
   const [filterType, setFilterType] = useState<'all' | 'GOAL' | 'SANCTION' | 'TIMEOUT'>('all');
   const [filterSanction, setFilterSanction] = useState<'all' | SanctionType>('all');
   const [filterTeam, setFilterTeam] = useState<'all' | 'home' | 'away'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
-  // Import states
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [jsonText, setJsonText] = useState('');
-  const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace');
-  const [validationResult, setValidationResult] = useState<EventsValidationResult | null>(null);
-  const [importStatus, setImportStatus] = useState<{ success?: boolean; message?: string } | null>(null);
-  const [copiedJSON, setCopiedJSON] = useState(false);
+  // Export states
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
 
   // Manual Add Event states
   const [manualTimeMinutes, setManualTimeMinutes] = useState(Math.floor(match.timer / 60));
@@ -70,29 +82,21 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   const [manualSanctionType, setManualSanctionType] = useState<SanctionType>(SanctionType.YELLOW);
   const [manualPlayerId, setManualPlayerId] = useState<string>('');
 
-  // Selected player candidates for manual add
   const manualTeamPlayers = manualTeam === 'home' ? match.homeTeam.players : match.awayTeam.players;
 
-  // Filtered Events
+  // Filtered Events for Timeline
   const filteredEvents = useMemo(() => {
     let list = [...match.events];
 
-    // Filter by type
     if (filterType !== 'all') {
       list = list.filter(e => e.type === filterType);
     }
-
-    // Filter by specific sanction
     if (filterType === 'SANCTION' && filterSanction !== 'all') {
       list = list.filter(e => e.sanctionType === filterSanction);
     }
-
-    // Filter by team
     if (filterTeam !== 'all') {
       list = list.filter(e => e.team === filterTeam);
     }
-
-    // Search query
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim();
       list = list.filter(e => 
@@ -102,7 +106,6 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
       );
     }
 
-    // Sorting
     list.sort((a, b) => {
       if (sortOrder === 'desc') return b.timestamp - a.timestamp;
       return a.timestamp - b.timestamp;
@@ -111,32 +114,10 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
     return list;
   }, [match.events, filterType, filterSanction, filterTeam, searchTerm, sortOrder]);
 
-  // Statistics from current match events
-  const stats = useMemo(() => {
-    let hGoals = 0;
-    let aGoals = 0;
-    let yellows = 0;
-    let twoMins = 0;
-    let reds = 0;
-    let blues = 0;
-    let timeouts = 0;
-
-    match.events.forEach(e => {
-      if (e.type === 'GOAL') {
-        if (e.team === 'home') hGoals++;
-        else aGoals++;
-      } else if (e.type === 'SANCTION') {
-        if (e.sanctionType === SanctionType.YELLOW) yellows++;
-        else if (e.sanctionType === SanctionType.TWO_MINUTES) twoMins++;
-        else if (e.sanctionType === SanctionType.RED) reds++;
-        else if (e.sanctionType === SanctionType.BLUE) blues++;
-      } else if (e.type === 'TIMEOUT') {
-        timeouts++;
-      }
-    });
-
-    return { hGoals, aGoals, yellows, twoMins, reds, blues, timeouts, total: match.events.length };
-  }, [match.events]);
+  // Statistical & Tactical Analysis
+  const analysis: MatchAnalysisReport = useMemo(() => {
+    return analyzeMatch(match, activeLang);
+  }, [match, activeLang]);
 
   // Handle Event Deletion
   const handleDeleteEvent = (eventId: string) => {
@@ -158,7 +139,7 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
     const s = totalSecs % 60;
     const timeStr = `${m}:${s.toString().padStart(2, '0')}`;
 
-    let playerObj = manualTeamPlayers.find(p => p.id === manualPlayerId);
+    const playerObj = manualTeamPlayers.find(p => p.id === manualPlayerId);
 
     const newEvt: MatchEvent = {
       id: Math.random().toString(36).substring(2, 12) + Date.now().toString(36),
@@ -183,117 +164,74 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
     setActiveTab('timeline');
   };
 
-  // Handle File Upload for Import
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      setJsonText(content);
-      const res = validateAndParseEvents(content);
-      setValidationResult(res);
-      setImportStatus(null);
-    };
-    reader.readAsText(file);
-  };
-
-  // Validate Pasted JSON
-  const handleValidateJSON = () => {
-    if (!jsonText.trim()) {
-      setValidationResult({
-        valid: false,
-        events: [],
-        errors: [lang === 'ar' ? 'يرجى لصق كود JSON أو تحميل ملف أولاً.' : 'Veuillez coller le JSON ou charger un fichier.'],
-        stats: { totalEvents: 0, homeGoals: 0, awayGoals: 0, yellowCards: 0, twoMinutes: 0, redCards: 0, blueCards: 0, timeoutsHome: 0, timeoutsAway: 0 }
-      });
-      return;
-    }
-    const res = validateAndParseEvents(jsonText);
-    setValidationResult(res);
-    setImportStatus(null);
-  };
-
-  // Perform Import
-  const handleConfirmImport = () => {
-    if (!validationResult || !validationResult.valid) return;
-
+  // Export Excel
+  const handleExportExcel = () => {
     try {
-      const updatedMatch = recalculateMatchFromEvents(match, validationResult.events, importMode);
-      onUpdateMatch(updatedMatch);
-      setImportStatus({
-        success: true,
-        message: lang === 'ar'
-          ? `تم استيراد ${validationResult.events.length} حدث بنجاح وتحديث نتيجة المباراة إلى (${updatedMatch.score.home} - ${updatedMatch.score.away})!`
-          : `Importation réussie de ${validationResult.events.length} événements !`
-      });
-      setTimeout(() => {
-        setActiveTab('timeline');
-      }, 1500);
-    } catch (err: any) {
-      setImportStatus({
-        success: false,
-        message: lang === 'ar' ? `حدث خطأ أثناء الاستيراد: ${err?.message}` : 'Erreur lors de l\'importation.'
-      });
+      setIsExportingExcel(true);
+      exportMatchToExcel(match, activeLang);
+    } catch (e) {
+      console.error('Failed to export Excel', e);
+      alert(activeLang === 'ar' ? 'تعذر تصدير ملف الإكسل' : 'Échec de l\'exportation Excel');
+    } finally {
+      setIsExportingExcel(false);
     }
   };
 
-  // Copy events JSON to clipboard
-  const handleCopyJSON = async () => {
-    const exportData = {
-      app: 'HandballScore PRO',
-      formatVersion: '1.0',
-      exportedAt: new Date().toISOString(),
-      matchId: match.id,
-      matchDetails: {
-        numRencontre: match.details?.numRencontre || '',
-        category: match.details?.categorie || '',
-        date: match.details?.date || '',
-        venue: match.details?.lieu || '',
-        homeTeam: match.homeTeam.name,
-        awayTeam: match.awayTeam.name,
-        finalScore: `${match.score.home} - ${match.score.away}`
-      },
-      eventsCount: match.events.length,
-      events: match.events
-    };
-    await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-    setCopiedJSON(true);
-    setTimeout(() => setCopiedJSON(false), 2500);
+  // Export PDF
+  const handleExportPDF = async () => {
+    try {
+      setIsExportingPDF(true);
+      const ok = await generateAnalysisPDF('match-analysis-printable-report', match, activeLang);
+      if (!ok) {
+        alert(activeLang === 'ar' ? 'تعذر إنشاء تقرير PDF، يرجى المحاولة مرة أخرى.' : 'Échec de la génération du PDF.');
+      }
+    } catch (e) {
+      console.error('Failed to export PDF', e);
+      alert(activeLang === 'ar' ? 'حدث خطأ أثناء إعداد تقرير PDF' : 'Erreur lors de l\'export PDF');
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // Share WhatsApp Analysis
+  const handleShareWhatsAppAnalysis = () => {
+    const text = isRtl
+      ? `🤾‍♂️ *تقرير وتحليل مباراة كرة اليد الرسمية*\n🏆 *${match.homeTeam.name}* (${analysis.finalScore.home}) 🆚 (${analysis.finalScore.away}) *${match.awayTeam.name}*\n🥇 الفائز: *${analysis.winner}*\n\n📊 *أبرز مؤشرات الأداء:*\n• الشوط الأول: ${analysis.firstHalf.home} - ${analysis.firstHalf.away}\n• الشوط الثاني: ${analysis.secondHalf.home} - ${analysis.secondHalf.away}\n• هداف المباراة: ${analysis.mvpPlayer ? `${analysis.mvpPlayer.name} (#${analysis.mvpPlayer.number}) - ${analysis.mvpPlayer.goals} أهداف` : '-'}\n• عقوبات دقيقتين: ${analysis.twoMinuteImpact.homeSuspensions} للمضيف مقابل ${analysis.twoMinuteImpact.awaySuspensions} للضيف\n\n📝 *الخلاصة الفنية والتحليلية:*\n${analysis.narrativeSummaryAr}\n\n📄 تم التوثيق والتحليل بواسطة تطبيق *HandballScore PRO*.`
+      : `🤾‍♂️ *Rapport & Analyse du Match - Handball*\n🏆 *${match.homeTeam.name}* (${analysis.finalScore.home}) 🆚 (${analysis.finalScore.away}) *${match.awayTeam.name}*\n🥇 Vainqueur: *${analysis.winner}*\n\n📊 *Statistiques Clés:*\n• 1ère Mi-temps: ${analysis.firstHalf.home} - ${analysis.firstHalf.away}\n• 2ème Mi-temps: ${analysis.secondHalf.home} - ${analysis.secondHalf.away}\n• Meilleur buteur: ${analysis.mvpPlayer ? `${analysis.mvpPlayer.name} - ${analysis.mvpPlayer.goals} buts` : '-'}\n\n📝 *Analyse Technique:*\n${analysis.narrativeSummaryFr}\n\n📄 Généré par *HandballScore PRO*.`;
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-200" dir={isRtl ? 'rtl' : 'ltr'}>
-      <div className={`w-full max-w-4xl max-h-[92vh] flex flex-col rounded-[2.5rem] border-2 shadow-2xl overflow-hidden ${
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-2 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" dir={isRtl ? 'rtl' : 'ltr'}>
+      <div className={`w-full max-w-5xl max-h-[94vh] flex flex-col rounded-[2.5rem] border-2 shadow-2xl overflow-hidden ${
         isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
       }`}>
         
         {/* Header */}
-        <div className={`p-4 sm:p-6 border-b flex items-center justify-between shrink-0 ${
+        <div className={`p-4 sm:p-5 border-b flex items-center justify-between shrink-0 ${
           isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-slate-50 border-slate-200'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30">
-              <History size={24} />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30">
+              <BarChart3 size={24} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg sm:text-xl font-black">
-                  {lang === 'ar' ? 'سجل أحداث المقابلة' : 'Journal des Événements'}
+                  {lang === 'ar' ? 'سجل أحداث وتحليل المقابلة' : 'Journal & Analyse du Match'}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-500/10 text-blue-600 dark:text-blue-400">
                   {match.events.length} {lang === 'ar' ? 'حدث' : 'événements'}
                 </span>
               </div>
               <div className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: match.homeTeam.color }} />
+                <span className="inline-block w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: match.homeTeam.color }} />
                 <span>{match.homeTeam.name}</span>
-                <span className="font-black text-slate-900 dark:text-white">({match.score.home})</span>
+                <span className="font-black text-slate-900 dark:text-white font-mono">({analysis.finalScore.home})</span>
                 <span>-</span>
-                <span className="font-black text-slate-900 dark:text-white">({match.score.away})</span>
+                <span className="font-black text-slate-900 dark:text-white font-mono">({analysis.finalScore.away})</span>
                 <span>{match.awayTeam.name}</span>
-                <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ backgroundColor: match.awayTeam.color }} />
+                <span className="inline-block w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: match.awayTeam.color }} />
               </div>
             </div>
           </div>
@@ -311,6 +249,20 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
         <div className={`flex border-b px-4 sm:px-6 gap-2 shrink-0 overflow-x-auto ${
           isDarkMode ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-slate-100/60'
         }`}>
+          {/* Tab 1: Analysis */}
+          <button
+            onClick={() => setActiveTab('analysis')}
+            className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'analysis'
+                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <BarChart3 size={16} />
+            <span>{lang === 'ar' ? '📊 تحليل المقابلة المتقدم' : 'Analyse du Match'}</span>
+          </button>
+
+          {/* Tab 2: Timeline */}
           <button
             onClick={() => setActiveTab('timeline')}
             className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
@@ -320,9 +272,10 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
             }`}
           >
             <History size={16} />
-            <span>{lang === 'ar' ? 'سجل الأحداث الزمني' : 'Chronologie'}</span>
+            <span>{lang === 'ar' ? '⏱️ سجل الأحداث الزمني' : 'Chronologie'}</span>
           </button>
 
+          {/* Tab 3: Export */}
           <button
             onClick={() => setActiveTab('import_export')}
             className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
@@ -331,10 +284,11 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                 : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
           >
-            <Upload size={16} />
-            <span>{lang === 'ar' ? 'استيراد وتصدير (JSON)' : 'Import / Export'}</span>
+            <Download size={16} />
+            <span>{activeLang === 'ar' ? '📥 تصدير البيانات (Excel / PDF)' : 'Export (Excel / PDF)'}</span>
           </button>
 
+          {/* Tab 4: Add Manual */}
           <button
             onClick={() => setActiveTab('add_event')}
             className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
@@ -344,45 +298,418 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
             }`}
           >
             <Plus size={16} />
-            <span>{lang === 'ar' ? 'إضافة حدث يدوياً' : 'Ajouter manuellement'}</span>
+            <span>{lang === 'ar' ? '➕ إضافة حدث يدوياً' : 'Ajouter manuellement'}</span>
           </button>
         </div>
 
         {/* Tab Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           
-          {/* TAB 1: TIMELINE */}
+          {/* ======================================================== */}
+          {/* TAB: MATCH ANALYSIS (NEW ADVANCED FEATURE) */}
+          {/* ======================================================== */}
+          {activeTab === 'analysis' && (
+            <div className="space-y-6">
+              
+              {/* Quick Actions Bar */}
+              <div className={`p-4 rounded-3xl border-2 flex flex-wrap items-center justify-between gap-3 shadow-sm ${
+                isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Sparkles size={18} className="text-amber-500" />
+                  <span className="font-black text-xs sm:text-sm">
+                    {lang === 'ar' ? 'خيارات التقرير والتحليل المفصل:' : 'Options du Rapport:'}
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Export Excel */}
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    disabled={isExportingExcel}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title={lang === 'ar' ? 'تصدير البيانات كملف إكسل منسق مع الألوان' : 'Exporter en Excel'}
+                  >
+                    <FileSpreadsheet size={16} />
+                    <span>{lang === 'ar' ? 'تصدير إكسل (Excel .xls)' : 'Excel (.xls)'}</span>
+                  </button>
+
+                  {/* Export PDF */}
+                  <button
+                    type="button"
+                    onClick={handleExportPDF}
+                    disabled={isExportingPDF}
+                    className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title={lang === 'ar' ? 'تصدير تقرير التحليل كملف PDF رسمي ومنسق' : 'Télécharger Rapport PDF'}
+                  >
+                    {isExportingPDF ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                    <span>{isExportingPDF ? (lang === 'ar' ? 'جارٍ الإنشاء...' : 'Génération...') : (lang === 'ar' ? 'تحميل تقرير PDF' : 'Rapport PDF')}</span>
+                  </button>
+
+                  {/* WhatsApp Summary */}
+                  <button
+                    type="button"
+                    onClick={handleShareWhatsAppAnalysis}
+                    className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    title={lang === 'ar' ? 'مشاركة ملخص التحليل عبر واتساب' : 'Partager sur WhatsApp'}
+                  >
+                    <MessageCircle size={16} />
+                    <span>{lang === 'ar' ? 'مشاركة واتساب' : 'WhatsApp'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Printable / Visual Analysis Container */}
+              <div id="match-analysis-printable-report" className={`p-6 sm:p-8 rounded-[2.5rem] border-2 space-y-6 ${
+                isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}>
+                
+                {/* 1. Match Result Banner */}
+                <div className={`p-6 rounded-3xl border-2 relative overflow-hidden shadow-lg ${
+                  isDarkMode ? 'bg-gradient-to-r from-slate-950 via-indigo-950/40 to-slate-950 border-slate-800' : 'bg-gradient-to-r from-blue-50 via-indigo-50 to-emerald-50 border-indigo-200'
+                }`}>
+                  <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 text-center md:text-start">
+                    {/* Home Team */}
+                    <div className="flex-1 flex flex-col items-center md:items-start">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-blue-500/15 text-blue-600 dark:text-blue-400 mb-2">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: match.homeTeam.color }} />
+                        <span>{lang === 'ar' ? 'المضيف' : 'Domicile'}</span>
+                      </div>
+                      <h3 className="text-xl sm:text-2xl font-black">{match.homeTeam.name}</h3>
+                      <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
+                        {lang === 'ar' ? 'الشوط الأول:' : 'MT1:'} <strong className="text-slate-900 dark:text-white">{analysis.firstHalf.home}</strong> | {lang === 'ar' ? 'الشوط الثاني:' : 'MT2:'} <strong className="text-slate-900 dark:text-white">{analysis.secondHalf.home}</strong>
+                        {analysis.penalties.home > 0 && ` | 7m: ${analysis.penalties.home}`}
+                      </div>
+                    </div>
+
+                    {/* Central Score */}
+                    <div className="flex flex-col items-center px-6 py-3 rounded-2xl bg-white dark:bg-slate-950 border shadow-md">
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">
+                        {lang === 'ar' ? 'النتيجة النهائية' : 'Score Final'}
+                      </span>
+                      <div className="text-4xl sm:text-5xl font-black font-mono tracking-tight text-blue-600 dark:text-blue-400">
+                        {analysis.finalScore.home} - {analysis.finalScore.away}
+                      </div>
+                      <span className="mt-2 text-xs font-black px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                        {lang === 'ar' ? 'الفائز:' : 'Vainqueur:'} {analysis.winner}
+                      </span>
+                    </div>
+
+                    {/* Away Team */}
+                    <div className="flex-1 flex flex-col items-center md:items-end">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 mb-2">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: match.awayTeam.color }} />
+                        <span>{lang === 'ar' ? 'الضيف' : 'Extérieur'}</span>
+                      </div>
+                      <h3 className="text-xl sm:text-2xl font-black">{match.awayTeam.name}</h3>
+                      <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
+                        {lang === 'ar' ? 'الشوط الأول:' : 'MT1:'} <strong className="text-slate-900 dark:text-white">{analysis.firstHalf.away}</strong> | {lang === 'ar' ? 'الشوط الثاني:' : 'MT2:'} <strong className="text-slate-900 dark:text-white">{analysis.secondHalf.away}</strong>
+                        {analysis.penalties.away > 0 && ` | 7m: ${analysis.penalties.away}`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Key Highlights Strip (MVP, Biggest Run, Pace) */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Highlight 1: MVP Player */}
+                  <div className={`p-4 rounded-2xl border-2 flex items-center gap-3 ${
+                    isDarkMode ? 'bg-slate-950/50 border-amber-500/30' : 'bg-amber-50/60 border-amber-200'
+                  }`}>
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black shadow-md shrink-0">
+                      <Award size={24} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wide block">
+                        {lang === 'ar' ? 'أفضل لاعب وهداف المقابلة' : 'Homme du Match (MVP)'}
+                      </span>
+                      <h4 className="text-sm font-black truncate text-slate-900 dark:text-white">
+                        {analysis.mvpPlayer ? `#${analysis.mvpPlayer.number} ${analysis.mvpPlayer.name}` : (lang === 'ar' ? 'لا يوجد هداف محدد' : 'Non déterminé')}
+                      </h4>
+                      <p className="text-xs font-bold text-slate-500">
+                        {analysis.mvpPlayer ? `${analysis.mvpPlayer.goals} ${lang === 'ar' ? 'أهداف' : 'buts'} (تقييم: ${analysis.mvpPlayer.impactScore} نقطة)` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Highlight 2: Biggest Scoring Run */}
+                  <div className={`p-4 rounded-2xl border-2 flex items-center gap-3 ${
+                    isDarkMode ? 'bg-slate-950/50 border-blue-500/30' : 'bg-blue-50/60 border-blue-200'
+                  }`}>
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shadow-md shrink-0">
+                      <TrendingUp size={24} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wide block">
+                        {lang === 'ar' ? 'أكبر سلسلة أهداف دون رد' : 'Meilleure Série'}
+                      </span>
+                      <h4 className="text-sm font-black truncate text-slate-900 dark:text-white">
+                        {analysis.largestRun ? `${analysis.largestRun.goalsCount} ${lang === 'ar' ? 'أهداف متتالية لـ' : 'buts pour'} ${analysis.largestRun.teamName}` : (lang === 'ar' ? 'تبادل مستمر للأهداف' : 'Équilibré')}
+                      </h4>
+                      <p className="text-xs font-bold text-slate-500">
+                        {analysis.largestRun ? `${lang === 'ar' ? 'الفترة:' : 'Période:'} ${analysis.largestRun.startTimeStr} - ${analysis.largestRun.endTimeStr}` : ''}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Highlight 3: Rhythm & Changes */}
+                  <div className={`p-4 rounded-2xl border-2 flex items-center gap-3 ${
+                    isDarkMode ? 'bg-slate-950/50 border-purple-500/30' : 'bg-purple-50/60 border-purple-200'
+                  }`}>
+                    <div className="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center font-black shadow-md shrink-0">
+                      <Clock size={24} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wide block">
+                        {lang === 'ar' ? 'إيقاع المقابلة وتقلبات النتيجة' : 'Rythme & Changements'}
+                      </span>
+                      <h4 className="text-sm font-black truncate text-slate-900 dark:text-white">
+                        {analysis.scoringPaceMinutesPerGoal > 0 ? `${lang === 'ar' ? 'هدف كل' : '1 but /'} ${analysis.scoringPaceMinutesPerGoal} ${lang === 'ar' ? 'دقيقة' : 'min'}` : '-'}
+                      </h4>
+                      <p className="text-xs font-bold text-slate-500">
+                        {analysis.leadChanges} {lang === 'ar' ? 'مرات تبدّل فيها المتصدر' : 'changements de leader'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Comparative Technical Bars */}
+                <div className="space-y-4 pt-2">
+                  <h3 className="text-base font-black flex items-center gap-2">
+                    <PieChart size={18} className="text-blue-600" />
+                    <span>{lang === 'ar' ? 'مقارنة فنية مباشرة بين الفريقين' : 'Comparaison Technique Directe'}</span>
+                  </h3>
+
+                  <div className="space-y-3 text-xs font-bold">
+                    {/* Goals Bar */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span>{match.homeTeam.name}: <strong>{analysis.finalScore.home}</strong></span>
+                        <span className="text-slate-500">{lang === 'ar' ? 'إجمالي الأهداف' : 'Total Buts'}</span>
+                        <span>{match.awayTeam.name}: <strong>{analysis.finalScore.away}</strong></span>
+                      </div>
+                      <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                        <div 
+                          className="h-full transition-all" 
+                          style={{ 
+                            width: `${analysis.finalScore.home + analysis.finalScore.away > 0 ? (analysis.finalScore.home / (analysis.finalScore.home + analysis.finalScore.away)) * 100 : 50}%`,
+                            backgroundColor: match.homeTeam.color 
+                          }} 
+                        />
+                        <div 
+                          className="h-full transition-all" 
+                          style={{ 
+                            width: `${analysis.finalScore.home + analysis.finalScore.away > 0 ? (analysis.finalScore.away / (analysis.finalScore.home + analysis.finalScore.away)) * 100 : 50}%`,
+                            backgroundColor: match.awayTeam.color 
+                          }} 
+                        />
+                      </div>
+                    </div>
+
+                    {/* 7m Penalties Bar */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span>{match.homeTeam.name}: <strong>{analysis.sevenMeterGoals.home}</strong></span>
+                        <span className="text-slate-500">{lang === 'ar' ? 'رميات 7 أمتار المسجلة' : 'Jets 7m réussis'}</span>
+                        <span>{match.awayTeam.name}: <strong>{analysis.sevenMeterGoals.away}</strong></span>
+                      </div>
+                      <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                        <div 
+                          className="h-full bg-blue-500 transition-all" 
+                          style={{ 
+                            width: `${(analysis.sevenMeterGoals.home + analysis.sevenMeterGoals.away > 0) ? (analysis.sevenMeterGoals.home / (analysis.sevenMeterGoals.home + analysis.sevenMeterGoals.away)) * 100 : 50}%` 
+                          }} 
+                        />
+                        <div 
+                          className="h-full bg-emerald-500 transition-all" 
+                          style={{ 
+                            width: `${(analysis.sevenMeterGoals.home + analysis.sevenMeterGoals.away > 0) ? (analysis.sevenMeterGoals.away / (analysis.sevenMeterGoals.home + analysis.sevenMeterGoals.away)) * 100 : 50}%` 
+                          }} 
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2-Min Suspensions Bar */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span>{match.homeTeam.name}: <strong>{analysis.twoMinuteImpact.homeSuspensions} ({analysis.twoMinuteImpact.homePenaltyMinutes} د)</strong></span>
+                        <span className="text-slate-500">{lang === 'ar' ? 'الإيقافات المؤقتة (2 دقيقة)' : 'Exclusions 2 min'}</span>
+                        <span>{match.awayTeam.name}: <strong>{analysis.twoMinuteImpact.awaySuspensions} ({analysis.twoMinuteImpact.awayPenaltyMinutes} د)</strong></span>
+                      </div>
+                      <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                        <div 
+                          className="h-full bg-orange-500 transition-all" 
+                          style={{ 
+                            width: `${(analysis.twoMinuteImpact.homeSuspensions + analysis.twoMinuteImpact.awaySuspensions > 0) ? (analysis.twoMinuteImpact.homeSuspensions / (analysis.twoMinuteImpact.homeSuspensions + analysis.twoMinuteImpact.awaySuspensions)) * 100 : 50}%` 
+                          }} 
+                        />
+                        <div 
+                          className="h-full bg-rose-500 transition-all" 
+                          style={{ 
+                            width: `${(analysis.twoMinuteImpact.homeSuspensions + analysis.twoMinuteImpact.awaySuspensions > 0) ? (analysis.twoMinuteImpact.awaySuspensions / (analysis.twoMinuteImpact.homeSuspensions + analysis.twoMinuteImpact.awaySuspensions)) * 100 : 50}%` 
+                          }} 
+                        />
+                      </div>
+                    </div>
+
+                    {/* Timeouts Used */}
+                    <div>
+                      <div className="flex justify-between mb-1">
+                        <span>{match.homeTeam.name}: <strong>{analysis.timeoutsEffectiveness.homeTimeouts} / 3</strong></span>
+                        <span className="text-slate-500">{lang === 'ar' ? 'الأوقات المستقطعة' : 'Temps Morts'}</span>
+                        <span>{match.awayTeam.name}: <strong>{analysis.timeoutsEffectiveness.awayTimeouts} / 3</strong></span>
+                      </div>
+                      <div className="w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden flex">
+                        <div 
+                          className="h-full bg-purple-500 transition-all" 
+                          style={{ 
+                            width: `${(analysis.timeoutsEffectiveness.homeTimeouts + analysis.timeoutsEffectiveness.awayTimeouts > 0) ? (analysis.timeoutsEffectiveness.homeTimeouts / (analysis.timeoutsEffectiveness.homeTimeouts + analysis.timeoutsEffectiveness.awayTimeouts)) * 100 : 50}%` 
+                          }} 
+                        />
+                        <div 
+                          className="h-full bg-indigo-500 transition-all" 
+                          style={{ 
+                            width: `${(analysis.timeoutsEffectiveness.homeTimeouts + analysis.timeoutsEffectiveness.awayTimeouts > 0) ? (analysis.timeoutsEffectiveness.awayTimeouts / (analysis.timeoutsEffectiveness.homeTimeouts + analysis.timeoutsEffectiveness.awayTimeouts)) * 100 : 50}%` 
+                          }} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Top Scorers Podium Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                  {/* Home Scorers */}
+                  <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                    <h4 className="text-xs font-black uppercase text-blue-600 dark:text-blue-400 mb-3 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: match.homeTeam.color }} />
+                      <span>{lang === 'ar' ? `أبرز هدافي ${match.homeTeam.name}` : `Buteurs ${match.homeTeam.name}`}</span>
+                    </h4>
+                    {analysis.topHomeScorers.length === 0 ? (
+                      <p className="text-xs font-bold text-slate-400">{lang === 'ar' ? 'لم يسجل أي لاعب بعد' : 'Aucun buteur'}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {analysis.topHomeScorers.map((p, idx) => (
+                          <div key={p.id} className="flex items-center justify-between text-xs font-bold p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-[10px]">
+                                {idx + 1}
+                              </span>
+                              <span>#{p.number} {p.name}</span>
+                            </div>
+                            <span className="font-black text-blue-600 dark:text-blue-400">
+                              {p.goals} {lang === 'ar' ? 'أهداف' : 'buts'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Away Scorers */}
+                  <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                    <h4 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: match.awayTeam.color }} />
+                      <span>{lang === 'ar' ? `أبرز هدافي ${match.awayTeam.name}` : `Buteurs ${match.awayTeam.name}`}</span>
+                    </h4>
+                    {analysis.topAwayScorers.length === 0 ? (
+                      <p className="text-xs font-bold text-slate-400">{lang === 'ar' ? 'لم يسجل أي لاعب بعد' : 'Aucun buteur'}</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {analysis.topAwayScorers.map((p, idx) => (
+                          <div key={p.id} className="flex items-center justify-between text-xs font-bold p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-black text-[10px]">
+                                {idx + 1}
+                              </span>
+                              <span>#{p.number} {p.name}</span>
+                            </div>
+                            <span className="font-black text-emerald-600 dark:text-emerald-400">
+                              {p.goals} {lang === 'ar' ? 'أهداف' : 'buts'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 5. Tactical Observations & Summary Paragraph */}
+                <div className={`p-5 rounded-2xl border-2 space-y-3 ${
+                  isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
+                }`}>
+                  <h4 className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
+                    <FileText size={16} />
+                    <span>{lang === 'ar' ? 'التقرير الفني والتكتيكي المفصل للمباراة' : 'Rapport Tactique & Technique'}</span>
+                  </h4>
+
+                  {/* Bullet Insights */}
+                  <div className="space-y-1.5">
+                    {(isRtl ? analysis.tacticalInsightsAr : analysis.tacticalInsightsFr).map((insight, idx) => (
+                      <div key={idx} className="flex items-start gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span className="text-blue-500 shrink-0 mt-0.5">•</span>
+                        <span>{insight}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Narrative paragraph */}
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <p className="text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                      {isRtl ? analysis.narrativeSummaryAr : analysis.narrativeSummaryFr}
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* TAB: TIMELINE */}
+          {/* ======================================================== */}
           {activeTab === 'timeline' && (
             <div className="space-y-5">
               {/* Stats KPI Ribbon */}
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-slate-500">{lang === 'ar' ? 'أهداف المضيف' : 'Buts Domicile'}</div>
-                  <div className="text-xl font-black text-blue-600 dark:text-blue-400">{stats.hGoals}</div>
+                  <div className="text-xl font-black text-blue-600 dark:text-blue-400">{analysis.finalScore.home}</div>
                 </div>
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-slate-500">{lang === 'ar' ? 'أهداف الضيف' : 'Buts Extérieur'}</div>
-                  <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">{stats.aGoals}</div>
+                  <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">{analysis.finalScore.away}</div>
                 </div>
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-yellow-600 dark:text-yellow-400">{lang === 'ar' ? 'إنذارات (أصفر)' : 'Jaunes'}</div>
-                  <div className="text-xl font-black text-yellow-600 dark:text-yellow-400">{stats.yellows}</div>
+                  <div className="text-xl font-black text-yellow-600 dark:text-yellow-400">
+                    {match.events.filter(e => e.type === 'SANCTION' && e.sanctionType === SanctionType.YELLOW).length}
+                  </div>
                 </div>
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-orange-600 dark:text-orange-400">{lang === 'ar' ? 'إيقاف 2 دقائق' : '2 min'}</div>
-                  <div className="text-xl font-black text-orange-600 dark:text-orange-400">{stats.twoMins}</div>
+                  <div className="text-xl font-black text-orange-600 dark:text-orange-400">
+                    {match.events.filter(e => e.type === 'SANCTION' && e.sanctionType === SanctionType.TWO_MINUTES).length}
+                  </div>
                 </div>
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-rose-600 dark:text-rose-400">{lang === 'ar' ? 'طرد (أحمر)' : 'Rouges'}</div>
-                  <div className="text-xl font-black text-rose-600 dark:text-rose-400">{stats.reds}</div>
+                  <div className="text-xl font-black text-rose-600 dark:text-rose-400">
+                    {match.events.filter(e => e.type === 'SANCTION' && e.sanctionType === SanctionType.RED).length}
+                  </div>
                 </div>
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400">{lang === 'ar' ? 'تقرير (أزرق)' : 'Bleues'}</div>
-                  <div className="text-xl font-black text-blue-600 dark:text-blue-400">{stats.blues}</div>
+                  <div className="text-xl font-black text-blue-600 dark:text-blue-400">
+                    {match.events.filter(e => e.type === 'SANCTION' && e.sanctionType === SanctionType.BLUE).length}
+                  </div>
                 </div>
                 <div className={`p-2.5 rounded-2xl border text-center ${isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400">{lang === 'ar' ? 'وقت مستقطع' : 'Timeouts'}</div>
-                  <div className="text-xl font-black text-purple-600 dark:text-purple-400">{stats.timeouts}</div>
+                  <div className="text-xl font-black text-purple-600 dark:text-purple-400">
+                    {match.events.filter(e => e.type === 'TIMEOUT').length}
+                  </div>
                 </div>
               </div>
 
@@ -489,7 +816,7 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                     {lang === 'ar' ? 'لا توجد أحداث مطابقة للفلتر المحدد.' : 'Aucun événement correspondant.'}
                   </p>
                   <p className="text-xs font-bold text-slate-400 mt-1">
-                    {lang === 'ar' ? 'يمكنك تسجيل الأهداف والعقوبات أثناء المباراة أو استيرادها من ملف JSON.' : 'Enregistrez les buts et sanctions ou importez un fichier JSON.'}
+                    {activeLang === 'ar' ? 'يمكنك تسجيل الأهداف والعقوبات أثناء سير المباراة أو إضافتها يدوياً.' : 'Enregistrez les buts et sanctions pendant le match ou manuellement.'}
                   </p>
                 </div>
               ) : (
@@ -592,227 +919,157 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: IMPORT / EXPORT */}
+          {/* ======================================================== */}
+          {/* TAB: IMPORT / EXPORT (ENHANCED WITH EXCEL & PDF OPTIONS) */}
+          {/* ======================================================== */}
           {activeTab === 'import_export' && (
             <div className="space-y-6">
-              {/* Hidden file input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,application/json"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-
-              {/* Status Banner */}
-              {importStatus && (
-                <div className={`p-4 rounded-2xl flex items-center gap-3 border ${
-                  importStatus.success
-                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
-                    : 'bg-rose-500/15 border-rose-500/30 text-rose-700 dark:text-rose-300'
-                }`}>
-                  {importStatus.success ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-                  <span className="text-xs sm:text-sm font-black">{importStatus.message}</span>
-                </div>
-              )}
-
-              {/* Export Section */}
-              <div className={`p-6 rounded-3xl border-2 ${
+              {/* Header Box */}
+              <div className={`p-6 sm:p-7 rounded-3xl border-2 shadow-sm ${
                 isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
               }`}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <Download size={20} className="text-blue-600" />
-                    <h3 className="text-base font-black">
-                      {lang === 'ar' ? 'تصدير وحفظ أحداث المباراة الحالية' : 'Exporter les événements'}
-                    </h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30">
+                      <Download size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                        {activeLang === 'ar' ? 'تصدير وحفظ بيانات المباراة والتقارير' : 'Exporter les données et rapports du match'}
+                      </h3>
+                      <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                        {activeLang === 'ar' 
+                          ? 'تصدير منظم وملون بصيغة Excel أو PDF عالي الدقة جاهز للطباعة والأرشفة' 
+                          : 'Exportations enrichies et stylisées aux formats Excel et PDF de haute qualité.'}
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-xs font-bold text-slate-500">
-                    {match.events.length} {lang === 'ar' ? 'حدث مسجل' : 'enregistrés'}
+                  <span className="self-start sm:self-auto text-xs font-black bg-blue-500/10 text-blue-600 dark:text-blue-400 px-3.5 py-1.5 rounded-full border border-blue-500/20">
+                    {match.events.length} {activeLang === 'ar' ? 'حدث مسجل بالمباراة' : 'événements enregistrés'}
                   </span>
                 </div>
 
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4">
-                  {lang === 'ar'
-                    ? 'يمكنك تنزيل ملف JSON يحتوي على سجل جميع الأهداف والعقوبات والأوقات المستقطعة مع التوقيت واللاعبين، لاستخدامه في أجهزة أخرى أو أرشفته.'
-                    : 'Téléchargez un fichier JSON contenant la chronologie complète des événements.'}
-                </p>
-
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    onClick={() => exportEventsAsJSON(match)}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    <Download size={16} />
-                    <span>{lang === 'ar' ? 'تنزيل ملف أحداث (JSON)' : 'Télécharger JSON'}</span>
-                  </button>
-
-                  <button
-                    onClick={handleCopyJSON}
-                    className={`px-5 py-2.5 rounded-xl border font-black text-xs shadow-sm transition-all flex items-center gap-2 cursor-pointer ${
-                      copiedJSON
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : isDarkMode ? 'bg-slate-900 border-slate-700 text-white hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-100'
-                    }`}
-                  >
-                    {copiedJSON ? <Check size={16} /> : <Copy size={16} />}
-                    <span>{copiedJSON ? (lang === 'ar' ? 'تم النسخ!' : 'Copié !') : (lang === 'ar' ? 'نسخ كود JSON' : 'Copier JSON')}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Import Section */}
-              <div className={`p-6 rounded-3xl border-2 ${
-                isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Upload size={20} className="text-emerald-600" />
-                  <h3 className="text-base font-black">
-                    {lang === 'ar' ? 'استيراد سجل أحداث جديد إلى المباراة' : 'Importer des événements'}
-                  </h3>
-                </div>
-
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-4">
-                  {lang === 'ar'
-                    ? 'اختر ملف JSON أو الصق محتواه بالأسفل. سيتم فحص الأحداث والتأكد من صحتها، ثم إعادة احتساب النتيجة الرسمية وإحصائيات اللاعبين بدقة تلقائياً.'
-                    : 'Chargez un fichier JSON ou collez le contenu ci-dessous pour reconstruire le match.'}
-                </p>
-
-                {/* File picker button & Paste box */}
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer"
-                    >
-                      <Upload size={16} />
-                      <span>{lang === 'ar' ? 'اختيار ملف أحداث من الجهاز (.json)' : 'Choisir un fichier (.json)'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleValidateJSON}
-                      className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-800 font-bold text-xs transition cursor-pointer"
-                    >
-                      {lang === 'ar' ? 'فحص ومعاينة البيانات' : 'Valider'}
-                    </button>
-                  </div>
-
-                  <textarea
-                    rows={5}
-                    value={jsonText}
-                    onChange={(e) => {
-                      setJsonText(e.target.value);
-                      setValidationResult(null);
-                    }}
-                    placeholder={lang === 'ar' ? 'أو الصق كود JSON للأحداث هنا مباشرة...' : 'Ou collez le JSON ici...'}
-                    className={`w-full p-3 rounded-2xl font-mono text-xs border outline-none ${
-                      isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
-                    }`}
-                  />
-                </div>
-
-                {/* Validation Preview Card */}
-                {validationResult && (
-                  <div className={`p-4 rounded-2xl border-2 mb-4 animate-in fade-in ${
-                    validationResult.valid 
-                      ? 'bg-emerald-500/10 border-emerald-500/30' 
-                      : 'bg-rose-500/10 border-rose-500/30'
+                {/* 2 Focused Export Cards (Excel & PDF) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* CARD 1: EXCEL EXPORT */}
+                  <div className={`p-6 rounded-3xl border-2 flex flex-col justify-between transition-all ${
+                    isDarkMode 
+                      ? 'bg-slate-900/90 border-emerald-500/30 hover:border-emerald-500/50' 
+                      : 'bg-emerald-50/50 border-emerald-200 hover:border-emerald-300'
                   }`}>
-                    {validationResult.valid ? (
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-black text-xs sm:text-sm">
-                          <CheckCircle2 size={18} />
-                          <span>{lang === 'ar' ? 'تم فحص البيانات بنجاح، تم العثور على أحداث صالحة للاستيراد:' : 'Données valides :'}</span>
+                    <div className="space-y-4 mb-6">
+                      <div className="flex items-center justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20">
+                          <FileSpreadsheet size={24} />
                         </div>
+                        <span className="text-xs uppercase font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/30">
+                          EXCEL (.XLS)
+                        </span>
+                      </div>
 
-                        {/* Quick preview stats */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold">
-                          <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <span className="text-slate-500">{lang === 'ar' ? 'إجمالي الأحداث:' : 'Total :'} </span>
-                            <span className="font-black text-emerald-600">{validationResult.stats.totalEvents}</span>
-                          </div>
-                          <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <span className="text-slate-500">{lang === 'ar' ? 'النتيجة المتوقعة:' : 'Score :'} </span>
-                            <span className="font-black text-blue-600">{validationResult.stats.homeGoals} - {validationResult.stats.awayGoals}</span>
-                          </div>
-                          <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <span className="text-slate-500">{lang === 'ar' ? 'العقوبات:' : 'Sanctions :'} </span>
-                            <span className="font-black text-amber-600">
-                              {validationResult.stats.yellowCards + validationResult.stats.twoMinutes + validationResult.stats.redCards + validationResult.stats.blueCards}
-                            </span>
-                          </div>
-                          <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <span className="text-slate-500">{lang === 'ar' ? 'المستقطع:' : 'Timeouts :'} </span>
-                            <span className="font-black text-purple-600">{validationResult.stats.timeoutsHome + validationResult.stats.timeoutsAway}</span>
-                          </div>
+                      <div>
+                        <h4 className="text-base font-black text-slate-900 dark:text-white mb-1">
+                          {activeLang === 'ar' ? 'تصدير ملف إكسل منسق بالألوان' : 'Export Excel (.xls) Stylisé'}
+                        </h4>
+                        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {activeLang === 'ar'
+                            ? 'ورقة عمل إكسل كاملة تضم بطاقة اللقاء، ترويسات ملونة بهوية الفريقين، إحصائيات اللاعبين، وسجل زمني مفصل لجميع الأحداث.'
+                            : 'Feuille Excel complète avec couleurs des équipes, statistiques par joueur et historique chronologique des événements.'}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 pt-2 text-xs font-bold text-slate-600 dark:text-slate-300">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'جداول ملونة ومنسقة تدعم اللغة العربية (RTL)' : 'Mise en page bilingue et couleurs'}</span>
                         </div>
-
-                        {/* Import Mode Radio Choice */}
-                        <div className="pt-2 border-t border-emerald-500/20 space-y-2">
-                          <label className="text-xs font-black block text-slate-700 dark:text-slate-300">
-                            {lang === 'ar' ? 'كيف ترغب في تطبيق الأحداث المستوردة؟' : 'Mode d\'importation :'}
-                          </label>
-                          <div className="flex flex-col sm:flex-row gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
-                              <input
-                                type="radio"
-                                name="importMode"
-                                value="replace"
-                                checked={importMode === 'replace'}
-                                onChange={() => setImportMode('replace')}
-                                className="accent-emerald-600"
-                              />
-                              <span>{lang === 'ar' ? 'استبدال الأحداث الحالية بالكامل وإعادة حساب النتيجة (موصى به)' : 'Remplacer entièrement'}</span>
-                            </label>
-
-                            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs">
-                              <input
-                                type="radio"
-                                name="importMode"
-                                value="merge"
-                                checked={importMode === 'merge'}
-                                onChange={() => setImportMode('merge')}
-                                className="accent-emerald-600"
-                              />
-                              <span>{lang === 'ar' ? 'دمج مع الأحداث الحالية دون تكرار' : 'Fusionner sans doublons'}</span>
-                            </label>
-                          </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'إحصائيات تفصيلية للأهداف، رميات 7م، والعقوبات' : 'Statistiques détaillées des joueurs'}</span>
                         </div>
-
-                        {/* Confirm Button */}
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={handleConfirmImport}
-                            className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                          >
-                            <CheckCircle2 size={18} />
-                            <span>{lang === 'ar' ? 'تأكيد واستيراد الأحداث إلى المباراة الآن' : 'Confirmer l\'importation'}</span>
-                          </button>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'متوافق تماماً مع Microsoft Excel و Google Sheets' : 'Compatible Excel & Google Sheets'}</span>
                         </div>
                       </div>
-                    ) : (
-                      <div className="space-y-2 text-rose-600 dark:text-rose-400">
-                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm">
-                          <AlertCircle size={18} />
-                          <span>{lang === 'ar' ? 'فشل فحص البيانات:' : 'Erreur de validation :'}</span>
-                        </div>
-                        <ul className="list-disc list-inside text-xs font-bold space-y-1">
-                          {validationResult.errors.map((err, idx) => (
-                            <li key={idx}>{err}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleExportExcel}
+                      disabled={isExportingExcel}
+                      className="w-full py-3.5 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-black text-xs sm:text-sm shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <FileSpreadsheet size={18} />
+                      <span>{activeLang === 'ar' ? 'تحميل ملف الإكسل (.xls)' : 'Télécharger le fichier Excel (.xls)'}</span>
+                    </button>
                   </div>
-                )}
+
+                  {/* CARD 2: PDF REPORT */}
+                  <div className={`p-6 rounded-3xl border-2 flex flex-col justify-between transition-all ${
+                    isDarkMode 
+                      ? 'bg-slate-900/90 border-rose-500/30 hover:border-rose-500/50' 
+                      : 'bg-rose-50/50 border-rose-200 hover:border-rose-300'
+                  }`}>
+                    <div className="space-y-4 mb-6">
+                      <div className="flex items-center justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-rose-600 text-white flex items-center justify-center shadow-md shadow-rose-600/20">
+                          {isExportingPDF ? <Loader2 size={24} className="animate-spin" /> : <FileText size={24} />}
+                        </div>
+                        <span className="text-xs uppercase font-black bg-rose-500/15 text-rose-600 dark:text-rose-400 px-3 py-1 rounded-full border border-rose-500/30">
+                          PDF A4
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="text-base font-black text-slate-900 dark:text-white mb-1">
+                          {activeLang === 'ar' ? 'تقرير تحليلي وفني مفصل (PDF)' : 'Rapport Analytique Officiel (PDF)'}
+                        </h4>
+                        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {activeLang === 'ar'
+                            ? 'تقرير فني رسمي عالي الدقة يشمل النتيجة، تحليل الأشواط، بطاقة رجل المباراة (MVP)، أطول سلسلة أهداف، ومقارنات فنية جاهزة للطباعة.'
+                            : 'Rapport officiel au format A4 avec analyse tactique, MVP du match, momentum des séries de buts et comparatifs techniques.'}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 pt-2 text-xs font-bold text-slate-600 dark:text-slate-300">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-rose-600 dark:text-rose-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'تقرير منسق A4 عالي الدقة بالألوان والخطوط الرسمية' : 'Format A4 haute résolution'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-rose-600 dark:text-rose-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'بطاقة رجل المباراة (MVP) وقائمة أبرز الهدافين' : 'Carte MVP et meilleurs buteurs'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-rose-600 dark:text-rose-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'فقرة تحليل فني سردية متكاملة لمجريات المقابلة' : 'Synthèse narrative et analyse tactique'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleExportPDF}
+                      disabled={isExportingPDF}
+                      className="w-full py-3.5 px-5 rounded-2xl bg-rose-600 hover:bg-rose-500 active:scale-[0.99] text-white font-black text-xs sm:text-sm shadow-lg shadow-rose-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isExportingPDF ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                      <span>
+                        {isExportingPDF 
+                          ? (activeLang === 'ar' ? 'جارٍ إعداد ملف PDF...' : 'Génération en cours...') 
+                          : (activeLang === 'ar' ? 'تحميل تقرير PDF الرسمي' : 'Télécharger le Rapport PDF')}
+                      </span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: ADD EVENT MANUALLY */}
+          {/* ======================================================== */}
+          {/* TAB: ADD EVENT MANUALLY */}
+          {/* ======================================================== */}
           {activeTab === 'add_event' && (
             <form onSubmit={handleAddManualEvent} className="max-w-xl mx-auto space-y-4">
               <div className={`p-6 rounded-3xl border-2 space-y-4 ${

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MatchState, AppLanguage } from '../types.ts';
-import { Trash2, Eye, Calendar, MapPin, Search, Trophy, AlertTriangle, X, History } from 'lucide-react';
+import { Trash2, Eye, Calendar, MapPin, Search, Trophy, AlertTriangle, X, History, BarChart3 } from 'lucide-react';
 
 interface ArchiveListProps {
   matches: MatchState[];
@@ -8,13 +8,14 @@ interface ArchiveListProps {
   onSelect: (m: MatchState) => void;
   onDelete: (id: string) => void;
   onOpenEvents?: (m: MatchState) => void;
+  onOpenAnalysis?: (m: MatchState) => void;
   lang?: AppLanguage;
 }
 
 /**
  * ArchiveList displays a list of previous matches from local storage.
  */
-export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, onSelect, onDelete, onOpenEvents, lang = 'ar' }) => {
+export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, onSelect, onDelete, onOpenEvents, onOpenAnalysis, lang = 'ar' }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [matchToDelete, setMatchToDelete] = useState<MatchState | null>(null);
 
@@ -138,6 +139,16 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
+                {onOpenAnalysis && (
+                  <button
+                    onClick={() => onOpenAnalysis(m)}
+                    className="p-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-indigo-200 dark:border-indigo-800"
+                    title={lang === 'ar' ? 'تحليل تفصيلي وإحصائيات المقابلة' : 'Analyse du match'}
+                  >
+                    <BarChart3 size={15} />
+                    <span className="hidden sm:inline">{lang === 'ar' ? 'تحليل' : 'Analyse'}</span>
+                  </button>
+                )}
                 {onOpenEvents && (
                   <button
                     onClick={() => onOpenEvents(m)}

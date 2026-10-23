@@ -28,7 +28,7 @@ import { PWAInstallButton } from './components/PWAInstallButton.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 import { HomeDashboard } from './components/HomeDashboard.tsx';
 import { SplashAnimation } from './components/SplashAnimation.tsx';
-import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound, MessageSquare } from 'lucide-react';
+import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound, MessageSquare, BarChart3 } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
@@ -121,14 +121,23 @@ const App: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
-  // Match Events Log Modal
+  // Match Events Log & Analysis Modal
   const [showEventsModal, setShowEventsModal] = useState(false);
   const [eventsTargetMatch, setEventsTargetMatch] = useState<MatchState | null>(null);
+  const [eventsModalInitialTab, setEventsModalInitialTab] = useState<'timeline' | 'analysis' | 'import_export' | 'add_event'>('timeline');
 
-  const handleOpenEventsForMatch = (targetMatch: MatchState | null = match) => {
+  const handleOpenEventsForMatch = (
+    targetMatch: MatchState | null = match,
+    tab: 'timeline' | 'analysis' | 'import_export' | 'add_event' = 'timeline'
+  ) => {
     if (!targetMatch) return;
     setEventsTargetMatch(targetMatch);
+    setEventsModalInitialTab(tab);
     setShowEventsModal(true);
+  };
+
+  const handleOpenAnalysis = (targetMatch: MatchState | null = match) => {
+    handleOpenEventsForMatch(targetMatch, 'analysis');
   };
 
   const handleUpdateEventsMatch = (updated: MatchState) => {
@@ -1258,6 +1267,9 @@ const App: React.FC = () => {
                     <button onClick={() => { setView('sheet'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-green-600 dark:text-green-400">
                       <ClipboardList size={18} /> {t.matchSheet}
                     </button>
+                    <button onClick={() => { handleOpenAnalysis(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                      <BarChart3 size={18} /> {lang === 'ar' ? 'تحليل المقابلة والنتائج' : 'Analyse du match'}
+                    </button>
                     <button onClick={() => { handleOpenEventsForMatch(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
                       <div className="flex items-center gap-3">
                         <History size={18} />
@@ -1417,6 +1429,7 @@ const App: React.FC = () => {
                 setShowSubscriptionModal(true);
               }}
               onOpenEvents={() => handleOpenEventsForMatch(match)}
+              onOpenAnalysis={() => handleOpenAnalysis(match)}
               isDarkMode={isDarkMode}
               lang={lang}
             />
@@ -1526,7 +1539,7 @@ const App: React.FC = () => {
             </div>
           </div>}
         {view === 'sheet' && match && <div className="p-4 h-full overflow-y-auto"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} isAccountActive={isAccountActive} onOpenEvents={() => handleOpenEventsForMatch(match)} /></div>}
-        {view === 'archive' && <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} onOpenEvents={(m) => handleOpenEventsForMatch(m)} lang={lang} /></div>}
+        {view === 'archive' && <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} onOpenEvents={(m) => handleOpenEventsForMatch(m)} onOpenAnalysis={(m) => handleOpenAnalysis(m)} lang={lang} /></div>}
         
         {/* Footer Credit */}
         <div className={`py-2 text-center text-[10px] font-bold ${isDarkMode ? 'bg-slate-900 text-slate-500 border-t border-slate-800' : 'bg-white text-slate-600 border-t border-slate-200'}`}>
@@ -1813,6 +1826,7 @@ const App: React.FC = () => {
           }}
           isDarkMode={isDarkMode}
           lang={lang}
+          initialTab={eventsModalInitialTab}
         />
       )}
 
