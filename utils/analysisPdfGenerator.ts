@@ -35,6 +35,7 @@ export const generateAnalysisPDF = async (
       quality: 0.98,
       pixelRatio: 2,
       backgroundColor: '#ffffff',
+      skipFonts: true,
       filter: (node: HTMLElement) => {
         if (node.getAttribute && node.getAttribute('data-html2canvas-ignore') === 'true') {
           return false;
