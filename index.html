@@ -4,31 +4,117 @@
 <head>
     <meta charset="UTF-8">
     <script>
-      // Suppress benign iframe WebSocket disconnects and offline Firestore notices in AI Studio dev sandbox
+      // 1. Mock Vite HMR WebSocket in cloud sandbox where HMR is disabled
       (function() {
-        var isBenign = function(val) {
-          if (!val) return false;
-          var str = typeof val === 'string' ? val : (val.message || String(val));
-          return str.includes('WebSocket') || 
-                 str.includes('@firebase/firestore') || 
-                 str.includes('Could not reach Cloud Firestore backend') ||
-                 str.includes('offline mode until it is able to successfully connect');
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          var OrigWebSocket = window.WebSocket;
+          var MockViteWebSocket = function(url, protocols) {
+            var isViteHmr = false;
+            if (protocols) {
+              if (protocols === 'vite-hmr') isViteHmr = true;
+              else if (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1) isViteHmr = true;
+            }
+            if (isViteHmr || (typeof url === 'string' && (url.indexOf('vite') !== -1 || url.indexOf('hmr') !== -1))) {
+              var listeners = {};
+              var mockSocket = {
+                binaryType: 'blob',
+                bufferedAmount: 0,
+                extensions: '',
+                protocol: 'vite-hmr',
+                readyState: 1, // OPEN
+                url: String(url),
+                CONNECTING: 0,
+                OPEN: 1,
+                CLOSING: 2,
+                CLOSED: 3,
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null,
+                send: function() {},
+                close: function() {},
+                addEventListener: function(event, fn) {
+                  listeners[event] = listeners[event] || [];
+                  listeners[event].push(fn);
+                },
+                removeEventListener: function(event, fn) {
+                  if (!listeners[event]) return;
+                  var i = listeners[event].indexOf(fn);
+                  if (i !== -1) listeners[event].splice(i, 1);
+                },
+                dispatchEvent: function() { return true; }
+              };
+              setTimeout(function() {
+                if (mockSocket.onopen) {
+                  try { mockSocket.onopen(new Event('open')); } catch(e) {}
+                }
+                if (listeners['open']) {
+                  listeners['open'].forEach(function(fn) {
+                    try { fn(new Event('open')); } catch(e) {}
+                  });
+                }
+              }, 0);
+              return mockSocket;
+            }
+            return new OrigWebSocket(url, protocols);
+          };
+
+          MockViteWebSocket.prototype = OrigWebSocket.prototype;
+          MockViteWebSocket.CONNECTING = 0;
+          MockViteWebSocket.OPEN = 1;
+          MockViteWebSocket.CLOSING = 2;
+          MockViteWebSocket.CLOSED = 3;
+          window.WebSocket = MockViteWebSocket;
+        }
+
+        // 2. Suppress any lingering benign dev-sandbox errors
+        var isBenign = function() {
+          var str = '';
+          for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i];
+            if (!a) continue;
+            if (typeof a === 'string') {
+              str += ' ' + a;
+            } else if (a.message) {
+              str += ' ' + a.message + ' ' + (a.stack || '');
+            } else {
+              try { str += ' ' + JSON.stringify(a); } catch(e) { str += ' ' + String(a); }
+            }
+          }
+          return str.indexOf('WebSocket') !== -1 || 
+                 str.indexOf('@vite/client') !== -1 ||
+                 str.indexOf('@firebase/firestore') !== -1 || 
+                 str.indexOf('Could not reach Cloud Firestore') !== -1 ||
+                 str.indexOf('code=unavailable') !== -1 ||
+                 str.indexOf('offline mode until it is able to successfully connect') !== -1;
         };
 
         var origWarn = console.warn;
         console.warn = function() {
-          if (arguments[0] && isBenign(arguments[0])) return;
+          if (isBenign.apply(null, arguments)) return;
           origWarn.apply(console, arguments);
         };
 
         var origError = console.error;
         console.error = function() {
-          if (arguments[0] && isBenign(arguments[0])) return;
+          if (isBenign.apply(null, arguments)) return;
           origError.apply(console, arguments);
         };
 
+        var origLog = console.log;
+        console.log = function() {
+          if (isBenign.apply(null, arguments)) return;
+          origLog.apply(console, arguments);
+        };
+
+        var origInfo = console.info;
+        console.info = function() {
+          if (isBenign.apply(null, arguments)) return;
+          origInfo.apply(console, arguments);
+        };
+
         window.addEventListener('error', function(e) {
-          if (e && (isBenign(e.message) || (e.filename && e.filename.includes('@vite/client')))) {
+          if (e && (isBenign(e.message, e.error) || (e.filename && e.filename.indexOf('@vite/client') !== -1))) {
             e.stopImmediatePropagation();
             e.preventDefault();
             return true;

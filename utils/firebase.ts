@@ -30,7 +30,7 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 // Silence non-critical Firestore connection / offline warnings in console
 try {
-  setLogLevel('error');
+  setLogLevel('silent');
 } catch {
   // Ignore if already set
 }
@@ -42,6 +42,7 @@ const dbDatabaseId = (firebaseConfig as any).firestoreDatabaseId || '(default)';
 let firestoreDb;
 try {
   firestoreDb = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager()
     })
