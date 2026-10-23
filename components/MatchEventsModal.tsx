@@ -32,7 +32,11 @@ import {
   Sparkles,
   PieChart,
   Loader2,
-  Printer
+  Printer,
+  Bot,
+  Target,
+  Lightbulb,
+  CheckCheck
 } from 'lucide-react';
 import { 
   recalculateMatchFromEvents
@@ -40,6 +44,7 @@ import {
 import { exportMatchToExcel } from '../utils/excelExporter.ts';
 import { analyzeMatch, MatchAnalysisReport } from '../utils/matchAnalysis.ts';
 import { generateAnalysisPDF } from '../utils/analysisPdfGenerator.ts';
+import { requestAIMatchAnalysis, AIMatchAnalysis } from '../utils/aiAnalysisService.ts';
 
 interface MatchEventsModalProps {
   match: MatchState;
@@ -72,6 +77,12 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   // Export states
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+
+  // AI Analysis states
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<AIMatchAnalysis | null>(match.aiAnalysis || null);
+  const [copiedAI, setCopiedAI] = useState(false);
 
   // Manual Add Event states
   const [manualTimeMinutes, setManualTimeMinutes] = useState(Math.floor(match.timer / 60));
@@ -201,6 +212,40 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
   };
 
+  // Generate AI Tactical Match Analysis via Gemini
+  const handleGenerateAIAnalysis = async () => {
+    try {
+      setIsGeneratingAI(true);
+      setAiError(null);
+      const res = await requestAIMatchAnalysis(match, analysis, activeLang);
+      if (res.success && res.analysis) {
+        setAiAnalysis(res.analysis);
+        onUpdateMatch({
+          ...match,
+          aiAnalysis: res.analysis
+        });
+      } else {
+        setAiError(res.error || (activeLang === 'ar' ? 'تعذر توليد التحليل التكتيكي الذكي' : 'Échec de l\'analyse IA'));
+      }
+    } catch (e: any) {
+      console.error('AI generation failed', e);
+      setAiError(e?.message || (activeLang === 'ar' ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي' : 'Erreur de connexion'));
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
+  // Copy AI Analysis text
+  const handleCopyAIAnalysis = async () => {
+    if (!aiAnalysis) return;
+    const text = isRtl
+      ? `🤖 *التحليل التكتيكي الذكي لمباراة كرة اليد (Gemini AI)*\n🏆 *${match.homeTeam.name}* ضد *${match.awayTeam.name}* (${analysis.finalScore.home} - ${analysis.finalScore.away})\n\n📌 *العنوان:* ${aiAnalysis.title}\n💬 *الخلاصة:* ${aiAnalysis.headline}\n\n📖 *قراءة فنية لمجريات اللقاء:*\n${aiAnalysis.narrativeOverview}\n\n🎯 *أهم نقاط التحول التكتيكية:*\n${aiAnalysis.turningPoints.map(p => `• ${p}`).join('\n')}\n\n⚡ *المنظومة الهجومية:* ${aiAnalysis.offensiveAnalysis}\n🛡️ *المنظومة الدفاعية:* ${aiAnalysis.defensiveAnalysis}\n\n🥇 *رجل المباراة (MVP):* ${aiAnalysis.mvpEvaluation.playerName} (${aiAnalysis.mvpEvaluation.rating}) - ${aiAnalysis.mvpEvaluation.verdict}\n\n📋 *توصية لـ ${match.homeTeam.name}:* ${aiAnalysis.homeTeamAnalysis.coachAdvice}\n📋 *توصية لـ ${match.awayTeam.name}:* ${aiAnalysis.awayTeamAnalysis.coachAdvice}\n\n📄 صادر بواسطة تطبيق *HandballScore PRO*.`
+      : `🤖 *Analyse Tactique IA - Match Handball (Gemini)*\n🏆 *${match.homeTeam.name}* vs *${match.awayTeam.name}* (${analysis.finalScore.home} - ${analysis.finalScore.away})\n\n📌 *Titre:* ${aiAnalysis.title}\n💬 *Résumé:* ${aiAnalysis.headline}\n\n📖 *Vue d'ensemble:*\n${aiAnalysis.narrativeOverview}\n\n🎯 *Tournants tactiques:*\n${aiAnalysis.turningPoints.map(p => `• ${p}`).join('\n')}\n\n🥇 *MVP:* ${aiAnalysis.mvpEvaluation.playerName} (${aiAnalysis.mvpEvaluation.rating}) - ${aiAnalysis.mvpEvaluation.verdict}\n\n📋 *Conseil ${match.homeTeam.name}:* ${aiAnalysis.homeTeamAnalysis.coachAdvice}\n📋 *Conseil ${match.awayTeam.name}:* ${aiAnalysis.awayTeamAnalysis.coachAdvice}\n\n📄 Généré par *HandballScore PRO*.`;
+    await navigator.clipboard.writeText(text);
+    setCopiedAI(true);
+    setTimeout(() => setCopiedAI(false), 2500);
+  };
+
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center p-2 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" dir={isRtl ? 'rtl' : 'ltr'}>
       <div className={`w-full max-w-5xl max-h-[94vh] flex flex-col rounded-[2.5rem] border-2 shadow-2xl overflow-hidden ${
@@ -323,6 +368,22 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* AI Analysis Button */}
+                  <button
+                    type="button"
+                    onClick={handleGenerateAIAnalysis}
+                    disabled={isGeneratingAI}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    title={activeLang === 'ar' ? 'تحليل تكتيكي عميق بالذكاء الاصطناعي (Gemini)' : 'Analyse Tactique IA'}
+                  >
+                    {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
+                    <span>
+                      {isGeneratingAI 
+                        ? (activeLang === 'ar' ? 'جارٍ تحليل اللقاء بالذكاء الاصطناعي...' : 'Analyse IA en cours...') 
+                        : (activeLang === 'ar' ? '🤖 تحليل تكتيكي ذكي (AI)' : 'Analyse IA')}
+                    </span>
+                  </button>
+
                   {/* Export Excel */}
                   <button
                     type="button"
@@ -359,6 +420,13 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                   </button>
                 </div>
               </div>
+
+              {aiError && (
+                <div className="p-4 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-700 dark:text-rose-300 flex items-center gap-2 text-xs font-black">
+                  <AlertCircle size={18} />
+                  <span>{aiError}</span>
+                </div>
+              )}
 
               {/* Printable / Visual Analysis Container */}
               <div id="match-analysis-printable-report" className={`p-6 sm:p-8 rounded-[2.5rem] border-2 space-y-6 ${
@@ -634,6 +702,125 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* 4.5. GEMINI AI TACTICAL MATCH ANALYSIS SECTION */}
+                {aiAnalysis && (
+                  <div className={`p-6 sm:p-7 rounded-3xl border-2 shadow-lg space-y-5 ${
+                    isDarkMode 
+                      ? 'bg-gradient-to-br from-slate-950 via-indigo-950/30 to-slate-950 border-indigo-500/40' 
+                      : 'bg-gradient-to-br from-blue-50/70 via-indigo-50/50 to-purple-50/70 border-indigo-300'
+                  }`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-indigo-500/20">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/30">
+                          <Bot size={26} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                              {aiAnalysis.title}
+                            </h3>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
+                              Gemini AI Pro
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                            {aiAnalysis.headline}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCopyAIAnalysis}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-black border flex items-center gap-1.5 transition cursor-pointer ${
+                            copiedAI 
+                              ? 'bg-emerald-600 text-white border-emerald-600' 
+                              : isDarkMode ? 'bg-slate-900 border-slate-700 hover:bg-slate-800' : 'bg-white border-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          {copiedAI ? <Check size={14} /> : <Copy size={14} />}
+                          <span>{copiedAI ? (activeLang === 'ar' ? 'تم النسخ!' : 'Copié!') : (activeLang === 'ar' ? 'نسخ التقرير' : 'Copier')}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Narrative Overview */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-black uppercase text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                        <Sparkles size={14} />
+                        <span>{activeLang === 'ar' ? 'قراءة فنية وسردية شاملة' : 'Synthèse Narrative'}</span>
+                      </h4>
+                      <p className="text-xs sm:text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {aiAnalysis.narrativeOverview}
+                      </p>
+                    </div>
+
+                    {/* Turning points */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-black uppercase text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                        <Target size={14} />
+                        <span>{activeLang === 'ar' ? 'نقاط التحول التكتيكية والحاسمة' : 'Tournants Tactiques'}</span>
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {aiAnalysis.turningPoints.map((point, idx) => (
+                          <div key={idx} className={`p-3 rounded-2xl border text-xs font-bold flex items-start gap-2 ${
+                            isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-200' : 'bg-white/80 border-indigo-100 text-slate-800'
+                          }`}>
+                            <span className="w-5 h-5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-black text-[10px] shrink-0 mt-0.5">
+                              {idx + 1}
+                            </span>
+                            <span>{point}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* MVP AI Verdict */}
+                    <div className={`p-4 rounded-2xl border flex items-center gap-4 ${
+                      isDarkMode ? 'bg-slate-900/80 border-amber-500/30' : 'bg-amber-50/70 border-amber-200'
+                    }`}>
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black shadow-md shrink-0">
+                        <Award size={24} />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 tracking-wide block">
+                          {activeLang === 'ar' ? 'تقييم الذكاء الاصطناعي لرجل المباراة (MVP)' : 'Verdict MVP (AI)'}
+                        </span>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                          {aiAnalysis.mvpEvaluation.playerName} <span className="text-xs font-bold text-amber-600">({aiAnalysis.mvpEvaluation.rating})</span>
+                        </h4>
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300 mt-0.5">
+                          {aiAnalysis.mvpEvaluation.verdict}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Coach Advice for both teams */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
+                        <h5 className="text-xs font-black text-blue-600 dark:text-blue-400 mb-1 flex items-center gap-1.5">
+                          <Lightbulb size={14} />
+                          <span>{activeLang === 'ar' ? `توصية مدرب ${match.homeTeam.name}` : `Conseil Coach ${match.homeTeam.name}`}</span>
+                        </h5>
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                          {aiAnalysis.homeTeamAnalysis.coachAdvice}
+                        </p>
+                      </div>
+
+                      <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
+                        <h5 className="text-xs font-black text-emerald-600 dark:text-emerald-400 mb-1 flex items-center gap-1.5">
+                          <Lightbulb size={14} />
+                          <span>{activeLang === 'ar' ? `توصية مدرب ${match.awayTeam.name}` : `Conseil Coach ${match.awayTeam.name}`}</span>
+                        </h5>
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300 leading-relaxed">
+                          {aiAnalysis.awayTeamAnalysis.coachAdvice}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 5. Tactical Observations & Summary Paragraph */}
                 <div className={`p-5 rounded-2xl border-2 space-y-3 ${

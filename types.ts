@@ -139,6 +139,7 @@ export interface MatchState {
     currentTurn: 'home' | 'away';
   };
   events: MatchEvent[];
+  aiAnalysis?: any;
   config: { 
     halfDuration: number; 
     otDuration: number; 
