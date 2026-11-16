@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { MatchState, SanctionType, Player, Team, MatchEvent, MatchPeriod, AppLanguage } from '../types.ts';
+import { MatchState, SanctionType, Player, Team, MatchEvent, MatchPeriod, AppLanguage, SubscriberFeaturesConfig, DEFAULT_SUBSCRIBER_FEATURES } from '../types.ts';
 import { Printer, Download, PenTool, Edit2, X, Save, Globe, MessageCircle, Share2, Copy, Check, Image as ImageIcon, Loader2, Smartphone, Maximize2, ZoomIn, ZoomOut, Upload, FileText, Paperclip, Trash2, ExternalLink, History, FileSpreadsheet } from 'lucide-react';
 import { generateMatchSheetPDF } from '../utils/pdfGenerator.ts';
 import { captureElementAsImage, shareMatchSheetImage, downloadImageFile, copyImageToClipboard } from '../utils/imageGenerator.ts';
@@ -10,6 +10,8 @@ import { translations } from '../utils/translations.ts';
 import { SheetSettings, getSheetSettings } from '../utils/sheetSettings.ts';
 import { SettingsModal } from './SettingsModal.tsx';
 import { Settings as SettingsIcon } from 'lucide-react';
+import { MatchSocialPosterModal } from './MatchSocialPosterModal.tsx';
+import { getContrastTextColor } from '../utils/colorContrast.ts';
 
 // Force load fonts
 const ensureFonts = () => {
@@ -33,7 +35,7 @@ const SheetHeader = ({ details, lang, sheetSettings, onOpenSettings }: SheetHead
   const isRtl = lang === 'ar';
   const effective = sheetSettings || getSheetSettings();
 
-  const logoSrc = effective.logoUrl || '/logo_frmss.png';
+  const logoSrc = effective.logoUrl || '/icon.svg';
   const mainTitleAr = effective.mainTitleAr || 'الجامعة الملكية المغربية\nللرياضة المدرسية';
   const mainTitleFr = effective.mainTitleFr || 'FÉDÉRATION ROYALE MAROCAINE\nDU SPORT SCOLAIRE';
 
@@ -91,7 +93,7 @@ const SheetHeader = ({ details, lang, sheetSettings, onOpenSettings }: SheetHead
           <img
             src={logoSrc}
             onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=200&output=png';
+              (e.target as HTMLImageElement).src = '/icon.svg';
             }}
             alt="Logo"
             className="h-16 max-w-full object-contain"
@@ -345,11 +347,11 @@ const TeamRoster = ({
       {/* Team Header & Timeouts */}
       <div 
         className="flex items-center justify-between border-2 border-black px-2 h-[36px] mb-0.5"
-        style={{ backgroundColor: team.color }}
+        style={{ backgroundColor: team.color, color: getContrastTextColor(team.color) }}
       >
         <div className="font-black text-base flex items-center gap-2 flex-1 min-w-0 pr-1">
           <div className="w-6 h-6 rounded-full bg-white text-black flex items-center justify-center text-xs border-2 border-black shadow-sm flex-shrink-0 font-bold">{letter}</div>
-          <span className="truncate flex-1 text-white mix-blend-difference drop-shadow-md text-sm sm:text-base" style={{ letterSpacing: 'normal' }}>{team.name}</span>
+          <span className="truncate flex-1 drop-shadow-sm text-sm sm:text-base" style={{ color: getContrastTextColor(team.color), letterSpacing: 'normal' }}>{team.name}</span>
         </div>
         <div className="flex border border-black bg-white text-black text-[8.5px] h-7 shadow-sm items-center flex-shrink-0 rounded-sm overflow-hidden font-bold" style={{ letterSpacing: 'normal' }}>
           <div className="px-1 border-r border-black flex items-center bg-gray-100 font-black text-black h-full">{timeoutAbbr} 1</div>
@@ -491,8 +493,10 @@ export const MatchSheet: React.FC<{
   lang?: AppLanguage;
   onLanguageChange?: (lang: AppLanguage) => void;
   isAccountActive?: boolean;
+  isDarkMode?: boolean;
   onOpenEvents?: () => void;
-}> = ({ match, onUpdate, lang = 'ar', onLanguageChange, isAccountActive = false, onOpenEvents }) => {
+  effectiveFeatures?: SubscriberFeaturesConfig;
+}> = ({ match, onUpdate, lang = 'ar', onLanguageChange, isAccountActive = false, isDarkMode = false, onOpenEvents, effectiveFeatures = DEFAULT_SUBSCRIBER_FEATURES }) => {
   useEffect(() => { ensureFonts(); }, []);
 
   const [currentLang, setCurrentLang] = useState<AppLanguage>(lang);
@@ -509,6 +513,12 @@ export const MatchSheet: React.FC<{
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [capturedImage, setCapturedImage] = useState<{ blob: Blob; dataUrl: string; filename: string } | null>(null);
   const [copiedToast, setCopiedToast] = useState(false);
+  const [sheetToast, setSheetToast] = useState<{ type: 'error' | 'info' | 'success'; text: string } | null>(null);
+
+  const showToast = (type: 'error' | 'info' | 'success', text: string) => {
+    setSheetToast({ type, text });
+    setTimeout(() => setSheetToast(null), 4000);
+  };
 
   const cleanHome = match.homeTeam.name.replace(/[^a-zA-Z0-9\u0600-\u06FF\s\-]/gi, '_').trim();
   const cleanAway = match.awayTeam.name.replace(/[^a-zA-Z0-9\u0600-\u06FF\s\-]/gi, '_').trim();
@@ -532,6 +542,7 @@ export const MatchSheet: React.FC<{
   // Custom Logo and Titles Settings
   const [sheetSettings, setSheetSettings] = useState<SheetSettings>(() => getSheetSettings());
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSocialPoster, setShowSocialPoster] = useState(false);
 
   useEffect(() => {
     const handleSettingsUpdate = (e: any) => {
@@ -616,13 +627,13 @@ export const MatchSheet: React.FC<{
       setIsCapturingImage(true);
       const res = await captureElementAsImage('match-sheet-content');
       if (!res) {
-        alert(currentLang === 'ar' ? 'تعذر إنشاء صورة ورقة المباراة، يرجى المحاولة مرة أخرى' : 'Impossible de générer l\'image');
+        showToast('error', currentLang === 'ar' ? 'تعذر إنشاء صورة ورقة المباراة، يرجى المحاولة مرة أخرى' : 'Impossible de générer l\'image');
         return;
       }
       setCapturedImage({ blob: res.blob, dataUrl: res.dataUrl, filename: imageFileName });
 
       // Attempt native Web Share API (opens WhatsApp directly on mobile if supported)
-      const didShare = await shareMatchSheetImage({
+      await shareMatchSheetImage({
         imageBlob: res.blob,
         homeTeam: match.homeTeam.name,
         awayTeam: match.awayTeam.name,
@@ -637,7 +648,7 @@ export const MatchSheet: React.FC<{
       setShowWhatsAppModal(true);
     } catch (err) {
       console.error('Error capturing image for WhatsApp', err);
-      alert(currentLang === 'ar' ? 'حدث خطأ أثناء إعداد صورة ورقة المباراة' : 'Erreur lors de la capture de l\'image');
+      showToast('error', currentLang === 'ar' ? 'حدث خطأ أثناء إعداد صورة ورقة المباراة' : 'Erreur lors de la capture de l\'image');
     } finally {
       setIsCapturingImage(false);
     }
@@ -651,10 +662,11 @@ export const MatchSheet: React.FC<{
       if (res) {
         downloadImageFile(res.blob, imageFileName);
       } else {
-        alert(currentLang === 'ar' ? 'تعذر إنشاء الصورة، يرجى المحاولة مرة أخرى' : 'Échec de la capture');
+        showToast('error', currentLang === 'ar' ? 'تعذر إنشاء الصورة، يرجى المحاولة مرة أخرى' : 'Échec de la capture');
       }
     } catch (e) {
       console.error('Direct image download failed', e);
+      showToast('error', currentLang === 'ar' ? 'تعذر إنشاء الصورة، يرجى المحاولة مرة أخرى' : 'Échec de la capture');
     } finally {
       setIsCapturingImage(false);
     }
@@ -676,7 +688,7 @@ export const MatchSheet: React.FC<{
     if (!file) return;
 
     if (file.size > 15 * 1024 * 1024) {
-      alert(currentLang === 'ar' ? 'حجم الملف كبير جداً (الحد الأقصى 15 ميغابايت)' : 'Fichier trop volumineux (max 15 Mo)');
+      showToast('error', currentLang === 'ar' ? 'حجم الملف كبير جداً (الحد الأقصى 15 ميغابايت)' : 'Fichier trop volumineux (max 15 Mo)');
       return;
     }
 
@@ -721,7 +733,7 @@ export const MatchSheet: React.FC<{
       setCopiedToast(true);
       setTimeout(() => setCopiedToast(false), 3000);
     } else {
-      alert(currentLang === 'ar' ? 'متصفحك لا يدعم نسخ الصور مباشرة، يمكنك استخدام زر التحميل أو المشاركة' : 'La copie directe n\'est pas supportée par ce navigateur');
+      showToast('info', currentLang === 'ar' ? 'متصفحك لا يدعم نسخ الصور مباشرة، يمكنك استخدام زر التحميل أو المشاركة' : 'La copie directe n\'est pas supportée par ce navigateur');
     }
   };
 
@@ -730,7 +742,14 @@ export const MatchSheet: React.FC<{
       ? `🤾‍♂️ *ورقة التحكيم الرسمية لمباراة كرة اليد*\n🏆 *${match.homeTeam.name}* (${match.score.home + match.score.homePenalties}) 🆚 (${match.score.away + match.score.awayPenalties}) *${match.awayTeam.name}*\n🥇 النتيجة / الفائز: *${winnerName}*\n📅 التاريخ: ${match.details?.date || 'اليوم'}\n🏟️ القاعة / الملعب: ${match.details?.lieu || 'غير محدد'}\n🏷️ الفئة: ${match.details?.categorie || 'عام'}\n\n📄 تم توثيق ورقة المباراة الرسمية FRMSS بنجاح عبر تطبيق *HandballScore Pro*.`
       : `🤾‍♂️ *Feuille de Match Officielle - Handball*\n🏆 *${match.homeTeam.name}* (${match.score.home + match.score.homePenalties}) 🆚 (${match.score.away + match.score.awayPenalties}) *${match.awayTeam.name}*\n🥇 Résultat: *${winnerName}*\n📅 Date: ${match.details?.date || 'Aujourd\'hui'}\n🏟️ Lieu: ${match.details?.lieu || '-'}\n🏷️ Catégorie: ${match.details?.categorie || '-'}\n\n📄 Feuille de match officielle générée par *HandballScore Pro*.`;
 
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(summaryText)}`, '_blank');
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(summaryText)}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const openSignature = (title: string, onSave: (data: string) => void) => {
@@ -769,7 +788,7 @@ export const MatchSheet: React.FC<{
   };
 
   return (
-    <div className="bg-slate-200 min-h-screen p-1.5 sm:p-4 font-sans text-black print:p-0 print:bg-white flex flex-col items-center">
+    <div className={`${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'} min-h-screen p-1.5 sm:p-4 font-sans print:p-0 print:bg-white print:text-black flex flex-col items-center transition-colors`}>
       {/* Hidden file input for uploading match sheet as image or PDF */}
       <input
         ref={fileInputRef}
@@ -779,22 +798,37 @@ export const MatchSheet: React.FC<{
         onChange={handleFileUpload}
       />
 
+      {sheetToast && (
+        <div className={`w-full max-w-xl mb-2 px-4 py-2.5 rounded-2xl border text-xs font-black flex items-center justify-between gap-2 shadow-lg print:hidden ${
+          sheetToast.type === 'error'
+            ? 'bg-rose-600 text-white border-rose-500'
+            : sheetToast.type === 'success'
+              ? 'bg-emerald-600 text-white border-emerald-500'
+              : 'bg-slate-800 text-white border-slate-700'
+        }`}>
+          <span>{sheetToast.text}</span>
+          <button onClick={() => setSheetToast(null)} className="p-1 rounded-lg hover:bg-white/15 cursor-pointer"><X size={14} /></button>
+        </div>
+      )}
+
       {/* Centered Minimalist Icon Toolbar (Hidden during printing/exporting) */}
       <div className="w-full flex justify-center items-center my-2 sm:my-3 print:hidden px-2">
         <div className="inline-flex items-center justify-center flex-wrap gap-1.5 sm:gap-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl sm:rounded-full border border-slate-200/90 dark:border-slate-800 shadow-xl shadow-slate-300/40 dark:shadow-black/50 transition-all max-w-full">
           {/* 1. Sheet & Logo Settings */}
-          <button
-            type="button"
-            onClick={() => setShowSettingsModal(true)}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200 dark:border-indigo-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
-            title={currentLang === 'ar' ? 'إعدادات ورقة التحكيم، الشعار، الأكاديمية والمديرية' : 'Paramètres de la feuille & Logo'}
-            aria-label="Settings"
-          >
-            <SettingsIcon size={18} />
-          </button>
+          {effectiveFeatures.customBranding && (
+            <button
+              type="button"
+              onClick={() => setShowSettingsModal(true)}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-600 dark:hover:text-white border border-indigo-200 dark:border-indigo-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
+              title={currentLang === 'ar' ? 'إعدادات ورقة التحكيم، الشعار، الأكاديمية والمديرية' : 'Paramètres de la feuille & Logo'}
+              aria-label="Settings"
+            >
+              <SettingsIcon size={18} />
+            </button>
+          )}
 
           {/* Events Log & Import Button */}
-          {onOpenEvents && (
+          {onOpenEvents && effectiveFeatures.eventsLog && (
             <button
               type="button"
               onClick={onOpenEvents}
@@ -812,39 +846,58 @@ export const MatchSheet: React.FC<{
           )}
 
           {/* 2. Download PDF */}
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={isExporting}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 dark:hover:text-white border border-rose-200 dark:border-rose-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
-            title={currentLang === 'ar' ? 'تحميل ورقة المباراة بصيغة PDF للطباعة والحفظ' : 'Télécharger la feuille en PDF'}
-            aria-label="Download PDF"
-          >
-            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
-          </button>
+          {effectiveFeatures.matchSheetPdf && (
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={isExporting}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white dark:bg-rose-950/60 dark:text-rose-300 dark:hover:bg-rose-600 dark:hover:text-white border border-rose-200 dark:border-rose-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
+              title={currentLang === 'ar' ? 'تحميل ورقة المباراة بصيغة PDF للطباعة والحفظ' : 'Télécharger la feuille en PDF'}
+              aria-label="Download PDF"
+            >
+              {isExporting ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+            </button>
+          )}
 
           {/* 3. Download PNG Image */}
-          <button
-            type="button"
-            onClick={handleDownloadDirectImage}
-            disabled={isCapturingImage}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-teal-50 hover:bg-teal-600 text-teal-600 hover:text-white dark:bg-teal-950/60 dark:text-teal-300 dark:hover:bg-teal-600 dark:hover:text-white border border-teal-200 dark:border-teal-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
-            title={currentLang === 'ar' ? 'تحميل ورقة المباراة كصورة PNG عالية الدقة' : 'Télécharger comme image PNG'}
-            aria-label="Save as Image"
-          >
-            {isCapturingImage ? <Loader2 size={18} className="animate-spin" /> : <ImageIcon size={18} />}
-          </button>
+          {effectiveFeatures.matchSheetPdf && (
+            <button
+              type="button"
+              onClick={handleDownloadDirectImage}
+              disabled={isCapturingImage}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-teal-50 hover:bg-teal-600 text-teal-600 hover:text-white dark:bg-teal-950/60 dark:text-teal-300 dark:hover:bg-teal-600 dark:hover:text-white border border-teal-200 dark:border-teal-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer disabled:opacity-50"
+              title={currentLang === 'ar' ? 'تحميل ورقة المباراة كصورة PNG عالية الدقة' : 'Télécharger comme image PNG'}
+              aria-label="Save as Image"
+            >
+              {isCapturingImage ? <Loader2 size={18} className="animate-spin" /> : <ImageIcon size={18} />}
+            </button>
+          )}
+
+          {/* 3.5 Social Media Poster */}
+          {effectiveFeatures.socialPoster && (
+            <button
+              type="button"
+              onClick={() => setShowSocialPoster(true)}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white shadow-md shadow-blue-500/25 transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer ring-2 ring-cyan-400/40"
+              title={currentLang === 'ar' ? 'إنشاء بوستر ملخص المباراة الاحترافي للسوشيال ميديا' : 'Affiche Résumé Réseaux Sociaux'}
+              aria-label="Matchday Social Poster"
+            >
+              <span className="text-base leading-none">📸</span>
+            </button>
+          )}
 
           {/* 4. Download Excel (.xls) with Colors */}
-          <button
-            type="button"
-            onClick={() => exportMatchToExcel(match, currentLang)}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-green-50 hover:bg-green-600 text-green-700 hover:text-white dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-600 dark:hover:text-white border border-green-200 dark:border-green-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
-            title={currentLang === 'ar' ? 'تصدير ورقة وبيانات المباراة كملف Excel منسق وملون' : 'Exporter les données vers Excel'}
-            aria-label="Export to Excel"
-          >
-            <FileSpreadsheet size={18} />
-          </button>
+          {effectiveFeatures.excelExport && (
+            <button
+              type="button"
+              onClick={() => exportMatchToExcel(match, currentLang)}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-green-50 hover:bg-green-600 text-green-700 hover:text-white dark:bg-green-950/60 dark:text-green-300 dark:hover:bg-green-600 dark:hover:text-white border border-green-200 dark:border-green-800/60 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
+              title={currentLang === 'ar' ? 'تصدير ورقة وبيانات المباراة كملف Excel منسق وملون' : 'Exporter les données vers Excel'}
+              aria-label="Export to Excel"
+            >
+              <FileSpreadsheet size={18} />
+            </button>
+          )}
 
           {/* 4. Share via WhatsApp */}
           <button
@@ -871,7 +924,21 @@ export const MatchSheet: React.FC<{
             </button>
           )}
 
-          {/* 9. Language Switcher (Icon-only: click to cycle ar -> fr -> en) */}
+          {/* 9. A4 Zoom Fit / 100% Toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              setCustomScale(null);
+              setZoomMode(prev => (prev === 'fit' ? 'actual' : 'fit'));
+            }}
+            className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-full flex items-center justify-center bg-slate-100 hover:bg-blue-600 text-slate-700 hover:text-white dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-blue-600 dark:hover:text-white border border-slate-200 dark:border-slate-700 shadow-sm transition-all duration-150 active:scale-90 hover:scale-105 cursor-pointer"
+            title={zoomMode === 'fit' ? (currentLang === 'ar' ? 'عرض الحجم الفعلي A4 (100%)' : 'Taille réelle A4 (100%)') : (currentLang === 'ar' ? 'ملاءمة الشاشة' : 'Adapter à l\'écran')}
+            aria-label="Toggle A4 Zoom"
+          >
+            {zoomMode === 'fit' ? <ZoomIn size={18} /> : <ZoomOut size={18} />}
+          </button>
+
+          {/* 10. Language Switcher (Icon-only: click to cycle ar -> fr -> en) */}
           <button
             type="button"
             onClick={() => toggleLanguage(currentLang === 'ar' ? 'fr' : currentLang === 'fr' ? 'en' : 'ar')}
@@ -923,7 +990,7 @@ export const MatchSheet: React.FC<{
           <div 
             id="match-sheet-content" 
             ref={sheetRef}
-            className="w-[210mm] min-h-[296mm] max-w-[210mm] bg-white p-[5mm] shadow-2xl print:shadow-none print:w-[210mm] print:h-[297mm] box-border flex flex-col relative justify-between border border-slate-300 print:border-none print:transform-none shrink-0"
+            className="w-[210mm] min-h-[297mm] h-[297mm] max-w-[210mm] bg-white text-black p-[5mm] shadow-2xl print:shadow-none print:w-[210mm] print:h-[297mm] box-border flex flex-col relative justify-between border border-slate-300 dark:border-slate-700 print:border-none print:transform-none shrink-0"
             style={{ 
               fontFamily: currentLang === 'ar' ? "'Cairo', sans-serif" : "'Inter', -apple-system, sans-serif",
               transform: isScaledDown ? `scale(${effectiveScale})` : undefined,
@@ -932,7 +999,7 @@ export const MatchSheet: React.FC<{
             dir={isRtl ? 'rtl' : 'ltr'}
           >
         <div>
-          <SheetHeader details={match.details} lang={currentLang} sheetSettings={sheetSettings} onOpenSettings={() => setShowSettingsModal(true)} />
+          <SheetHeader details={match.details} lang={currentLang} sheetSettings={sheetSettings} onOpenSettings={effectiveFeatures.customBranding ? () => setShowSettingsModal(true) : undefined} />
           <MatchInfo details={match.details} lang={currentLang} />
           <ScoreTable match={match} lang={currentLang} />
 
@@ -1062,33 +1129,34 @@ export const MatchSheet: React.FC<{
           title={signatureModal.title} 
           onSave={signatureModal.onSave} 
           onClose={() => setSignatureModal(prev => ({ ...prev, open: false }))} 
+          isDarkMode={isDarkMode}
         />
       )}
 
       {/* Team Protests / Reservations Modal */}
       {reservationModal.open && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
-          <div className="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h3 className="font-black text-xl text-black">
+          <div className={`w-full max-w-lg rounded-2xl p-6 shadow-2xl flex flex-col gap-4 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+            <div className={`flex justify-between items-center border-b pb-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <h3 className="font-black text-xl">
                 {t.editProtests}: {reservationModal.team === 'home' ? match.homeTeam.name : match.awayTeam.name}
               </h3>
-              <button onClick={() => setReservationModal({ ...reservationModal, open: false })} className="p-2 hover:bg-slate-100 rounded-full text-black">
+              <button onClick={() => setReservationModal({ ...reservationModal, open: false })} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'}`}>
                 <X size={24} />
               </button>
             </div>
             <textarea 
               autoFocus 
-              className="w-full h-44 p-4 rounded-xl border-2 border-slate-200 outline-none text-base font-bold resize-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-colors" 
+              className={`w-full h-44 p-4 rounded-xl border-2 outline-none text-base font-bold resize-none transition-colors ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-blue-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-blue-500'}`} 
               placeholder={t.protests} 
               value={reservationModal.text} 
               onChange={e => setReservationModal({ ...reservationModal, text: e.target.value })}
             />
             <div className="flex gap-3">
-              <button onClick={saveReservation} className="flex-1 py-3.5 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
+              <button onClick={saveReservation} className="flex-1 py-3.5 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-500 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
                 <Save size={18} /> {t.saveProtests}
               </button>
-              <button onClick={() => setReservationModal({ ...reservationModal, open: false })} className="py-3.5 px-6 bg-slate-100 text-slate-700 font-black rounded-xl hover:bg-slate-200 border-2 border-slate-200">
+              <button onClick={() => setReservationModal({ ...reservationModal, open: false })} className={`py-3.5 px-6 font-black rounded-xl border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'}`}>
                 {t.cancel}
               </button>
             </div>
@@ -1099,28 +1167,28 @@ export const MatchSheet: React.FC<{
       {/* Official Referee Report Modal */}
       {reportModal.open && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
-          <div className="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
-            <div className="flex justify-between items-center border-b pb-4">
-              <h3 className="font-black text-xl text-black">{t.editReport}</h3>
-              <button onClick={() => setReportModal({ ...reportModal, open: false })} className="p-2 hover:bg-slate-100 rounded-full text-black">
+          <div className={`w-full max-w-lg rounded-2xl p-6 shadow-2xl flex flex-col gap-4 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+            <div className={`flex justify-between items-center border-b pb-4 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <h3 className="font-black text-xl">{t.editReport}</h3>
+              <button onClick={() => setReportModal({ ...reportModal, open: false })} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'}`}>
                 <X size={24} />
               </button>
             </div>
-            <div className="bg-blue-50 p-3 rounded-xl text-xs text-blue-800 font-bold border border-blue-100">
+            <div className={`p-3 rounded-xl text-xs font-bold border ${isDarkMode ? 'bg-blue-950/50 text-blue-300 border-blue-900/50' : 'bg-blue-50 text-blue-800 border-blue-100'}`}>
               {t.refereeReport}
             </div>
             <textarea 
               autoFocus 
-              className="w-full h-44 p-4 rounded-xl border-2 border-slate-200 outline-none text-base font-bold resize-none bg-slate-50 focus:bg-white focus:border-blue-500 transition-colors" 
+              className={`w-full h-44 p-4 rounded-xl border-2 outline-none text-base font-bold resize-none transition-colors ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-blue-500' : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-blue-500'}`} 
               placeholder={t.refereeReport} 
               value={reportModal.text} 
               onChange={e => setReportModal({ ...reportModal, text: e.target.value })}
             />
             <div className="flex gap-3">
-              <button onClick={saveReport} className="flex-1 py-3.5 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 flex items-center justify-center gap-2 shadow-lg shadow-green-500/20">
+              <button onClick={saveReport} className="flex-1 py-3.5 bg-green-600 text-white font-black rounded-xl hover:bg-green-500 flex items-center justify-center gap-2 shadow-lg shadow-green-500/20">
                 <Save size={18} /> {t.saveReport}
               </button>
-              <button onClick={() => setReportModal({ ...reportModal, open: false })} className="py-3.5 px-6 bg-slate-100 text-slate-700 font-black rounded-xl hover:bg-slate-200 border-2 border-slate-200">
+              <button onClick={() => setReportModal({ ...reportModal, open: false })} className={`py-3.5 px-6 font-black rounded-xl border-2 ${isDarkMode ? 'bg-slate-800 text-slate-200 hover:bg-slate-700 border-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'}`}>
                 {t.cancel}
               </button>
             </div>
@@ -1131,25 +1199,25 @@ export const MatchSheet: React.FC<{
       {/* WhatsApp Image Sharing Modal */}
       {showWhatsAppModal && capturedImage && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
-          <div className="bg-white w-full max-w-xl max-h-[92vh] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 overflow-hidden border border-slate-200">
+          <div className={`w-full max-w-xl max-h-[92vh] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 overflow-hidden border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
             {/* Modal Header */}
-            <div className="flex justify-between items-center border-b pb-3 flex-shrink-0">
+            <div className={`flex justify-between items-center border-b pb-3 flex-shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2 sm:gap-3">
                 <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-600/30">
                   <MessageCircle size={22} />
                 </div>
                 <div>
-                  <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
+                  <h3 className="font-black text-base sm:text-lg leading-tight">
                     {currentLang === 'ar' ? 'إرسال ورقة المباراة عبر واتساب' : 'Partager la Feuille de Match WhatsApp'}
                   </h3>
-                  <p className="text-[10px] sm:text-xs font-bold text-slate-500">
+                  <p className={`text-[10px] sm:text-xs font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     {match.homeTeam.name} ({match.score.home + match.score.homePenalties}) - ({match.score.away + match.score.awayPenalties}) {match.awayTeam.name}
                   </p>
                 </div>
               </div>
               <button 
                 onClick={() => setShowWhatsAppModal(false)} 
-                className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+                className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-500'}`}
               >
                 <X size={20} />
               </button>
@@ -1157,15 +1225,15 @@ export const MatchSheet: React.FC<{
 
             {/* Copied Toast Banner */}
             {copiedToast && (
-              <div className="bg-emerald-50 border-2 border-emerald-500 text-emerald-800 p-3 rounded-2xl text-xs font-black flex items-center gap-2 animate-in zoom-in-95">
-                <Check size={18} className="text-emerald-600 flex-shrink-0" />
+              <div className="bg-emerald-500/15 border-2 border-emerald-500 text-emerald-700 dark:text-emerald-300 p-3 rounded-2xl text-xs font-black flex items-center gap-2 animate-in zoom-in-95">
+                <Check size={18} className="text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                 <span>{t.imageCopied}</span>
               </div>
             )}
 
             {/* Image Preview Box */}
-            <div className="flex-1 overflow-y-auto bg-slate-100 rounded-2xl p-2 border border-slate-200 flex flex-col items-center">
-              <div className="text-[10px] font-bold text-slate-500 mb-1 flex items-center gap-1">
+            <div className={`flex-1 overflow-y-auto rounded-2xl p-2 border flex flex-col items-center ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
+              <div className={`text-[10px] font-bold mb-1 flex items-center gap-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                 <ImageIcon size={12} />
                 <span>{currentLang === 'ar' ? 'معاينة صورة ورقة المباراة الرسمية FRMSS عالية الدقة:' : 'Aperçu de la feuille de match officielle HD:'}</span>
               </div>
@@ -1178,7 +1246,6 @@ export const MatchSheet: React.FC<{
 
             {/* Action Buttons Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 flex-shrink-0">
-              {/* Button 1: Direct WhatsApp Native Share */}
               <button
                 onClick={() => shareMatchSheetImage({
                   imageBlob: capturedImage.blob,
@@ -1190,36 +1257,33 @@ export const MatchSheet: React.FC<{
                   date: match.details?.date,
                   lang: currentLang
                 })}
-                className="py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                className="py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
               >
                 <Share2 size={16} />
                 <span>{currentLang === 'ar' ? 'مشاركة الصورة عبر واتساب مباشرة' : 'Partager l\'image sur WhatsApp'}</span>
               </button>
 
-              {/* Button 2: Copy image to clipboard */}
               <button
                 onClick={handleCopyCapturedImage}
-                className="py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                className={`py-3 px-4 font-black text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700' : 'bg-slate-900 hover:bg-slate-800 text-white'}`}
               >
                 <Copy size={16} />
                 <span>{t.copyImage}</span>
               </button>
 
-              {/* Button 3: Download PNG file */}
               <button
                 onClick={handleDownloadCapturedImage}
-                className="py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                className="py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
               >
                 <Download size={16} />
                 <span>{t.downloadImage}</span>
               </button>
 
-              {/* Button 4: Send text report via WhatsApp */}
               <button
                 onClick={handleOpenWhatsAppTextSummary}
-                className="py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-2 border-emerald-300 font-black text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                className={`py-2.5 px-4 border-2 font-black text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer ${isDarkMode ? 'bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border-emerald-700/60' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'}`}
               >
-                <MessageCircle size={16} className="text-emerald-600" />
+                <MessageCircle size={16} className="text-emerald-600 dark:text-emerald-400" />
                 <span>{currentLang === 'ar' ? 'إرسال تقرير المباراة نصياً' : 'Envoyer résumé texte WhatsApp'}</span>
               </button>
             </div>
@@ -1232,7 +1296,7 @@ export const MatchSheet: React.FC<{
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
         lang={currentLang}
-        isDarkMode={false}
+        isDarkMode={isDarkMode}
         onSettingsSaved={(newSettings) => {
           setSheetSettings(newSettings);
           if (onUpdate && match) {
@@ -1254,31 +1318,30 @@ export const MatchSheet: React.FC<{
       {/* Uploaded External Match Sheet Document Modal (Image or PDF) */}
       {showDocModal && attachedDoc && (
         <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
-          <div className="bg-white w-full max-w-2xl max-h-[92vh] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 overflow-hidden border border-slate-200">
-            <div className="flex justify-between items-center border-b pb-3 flex-shrink-0">
+          <div className={`w-full max-w-2xl max-h-[92vh] rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4 overflow-hidden border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+            <div className={`flex justify-between items-center border-b pb-3 flex-shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-md">
+                <div className="w-10 h-10 rounded-2xl bg-slate-800 text-white flex items-center justify-center shadow-md">
                   {attachedDoc.type === 'pdf' ? <FileText size={20} className="text-red-400" /> : <ImageIcon size={20} className="text-blue-400" />}
                 </div>
                 <div>
-                  <h3 className="font-black text-base sm:text-lg text-slate-900 leading-tight">
+                  <h3 className="font-black text-base sm:text-lg leading-tight">
                     {currentLang === 'ar' ? 'الوثيقة المرفقة بورقة المباراة' : 'Document joint'}
                   </h3>
-                  <p className="text-xs font-bold text-slate-500 truncate max-w-xs sm:max-w-md">
+                  <p className={`text-xs font-bold truncate max-w-xs sm:max-w-md ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     {attachedDoc.name} ({attachedDoc.size})
                   </p>
                 </div>
               </div>
               <button 
                 onClick={() => setShowDocModal(false)} 
-                className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors"
+                className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-500'}`}
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Content view: PDF iframe or Image */}
-            <div className="flex-1 overflow-auto bg-slate-100 rounded-2xl p-2 border border-slate-200 flex items-center justify-center min-h-[300px]">
+            <div className={`flex-1 overflow-auto rounded-2xl p-2 border flex items-center justify-center min-h-[300px] ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200'}`}>
               {attachedDoc.type === 'pdf' ? (
                 <iframe 
                   src={attachedDoc.dataUrl} 
@@ -1294,11 +1357,10 @@ export const MatchSheet: React.FC<{
               )}
             </div>
 
-            {/* Actions footer */}
-            <div className="flex items-center justify-between gap-3 pt-2 border-t flex-shrink-0">
+            <div className={`flex items-center justify-between gap-3 pt-2 border-t flex-shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
               <button
                 onClick={handleRemoveDoc}
-                className="px-4 py-2.5 text-rose-600 hover:bg-rose-50 rounded-xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer"
+                className={`px-4 py-2.5 text-rose-500 rounded-xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer ${isDarkMode ? 'hover:bg-rose-950/50' : 'hover:bg-rose-50'}`}
               >
                 <Trash2 size={16} />
                 <span>{currentLang === 'ar' ? 'حذف الوثيقة المرفقة' : 'Supprimer'}</span>
@@ -1308,14 +1370,14 @@ export const MatchSheet: React.FC<{
                 <a
                   href={attachedDoc.dataUrl}
                   download={attachedDoc.name}
-                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
+                  className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md transition cursor-pointer"
                 >
                   <Download size={16} />
                   <span>{currentLang === 'ar' ? 'تحميل الملف' : 'Télécharger'}</span>
                 </a>
                 <button
                   onClick={() => setShowDocModal(false)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition cursor-pointer"
+                  className={`px-4 py-2.5 rounded-xl font-bold text-xs transition cursor-pointer ${isDarkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
                 >
                   {currentLang === 'ar' ? 'إغلاق' : 'Fermer'}
                 </button>
@@ -1323,6 +1385,15 @@ export const MatchSheet: React.FC<{
             </div>
           </div>
         </div>
+      )}
+
+      {showSocialPoster && (
+        <MatchSocialPosterModal
+          match={match}
+          lang={currentLang}
+          isDarkMode={isDarkMode}
+          onClose={() => setShowSocialPoster(false)}
+        />
       )}
     </div>
   );

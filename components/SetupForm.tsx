@@ -204,6 +204,7 @@ export const SetupForm: React.FC<SetupFormProps> = ({
   const [otDur, setOtDur] = useState(5);
   const [suspensionDur, setSuspensionDur] = useState(2); // 2 minutes or 1 minute
   const [activeTab, setActiveTab] = useState<'details' | 'teamA' | 'teamB' | 'officials'>('details');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const [details, setDetails] = useState<MatchDetails>(initialDetails || {
     direction: '', 
@@ -256,19 +257,21 @@ export const SetupForm: React.FC<SetupFormProps> = ({
     });
   }, [awayCount]);
 
-  const validateNumbers = (players: PlayerInput[], teamName: string) => {
+  const validateNumbers = (players: PlayerInput[], teamName: string, targetTab: 'teamA' | 'teamB') => {
     const numbers = new Set<string>();
     const filledPlayers = players.filter(p => p.number.trim() !== '');
     
     // Check minimum players
     if (filledPlayers.length < 5) {
-        alert(`تنبيه: عدد اللاعبين المسجلين في فريق ${teamName} أقل من الحد الأدنى (5). المرجو إضافة لاعبين.`);
-        return false;
+      setValidationError(`تنبيه: عدد اللاعبين المسجلين في فريق ${teamName} أقل من الحد الأدنى (5). المرجو إضافة لاعبين.`);
+      setActiveTab(targetTab);
+      return false;
     }
 
     for (const p of filledPlayers) {
       if (numbers.has(p.number)) {
-        alert(`خطأ: الرقم ${p.number} مكرر في فريق ${teamName}. \n\nيجب تغيير رقم القميص لأحد اللاعبين.`);
+        setValidationError(`خطأ: الرقم ${p.number} مكرر في فريق ${teamName}. يجب تغيير رقم القميص لأحد اللاعبين.`);
+        setActiveTab(targetTab);
         return false;
       }
       numbers.add(p.number);
@@ -277,29 +280,30 @@ export const SetupForm: React.FC<SetupFormProps> = ({
   };
 
   const handleStart = () => {
-    if (!validateNumbers(homePlayers, home)) return;
-    if (!validateNumbers(awayPlayers, away)) return;
+    setValidationError(null);
+    if (!validateNumbers(homePlayers, home, 'teamA')) return;
+    if (!validateNumbers(awayPlayers, away, 'teamB')) return;
     onStart(home, homeCoach, homeAst, homePlayers, homeColor, away, awayCoach, awayAst, awayPlayers, awayColor, halfDur, otDur, suspensionDur, officials, details);
   };
 
-  const inputStyle = `w-full p-2 border rounded-xl text-xs font-bold outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'}`;
-  const labelStyle = `block text-[9px] font-black uppercase mb-1 mr-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`;
+  const inputStyle = `w-full p-2 border rounded-xl text-xs font-bold outline-none transition-all ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-500'}`;
+  const labelStyle = `block text-[9px] font-black uppercase mb-1 mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`;
 
   const renderColorPicker = (currentColor: string, onSelect: (color: string) => void) => (
     <div className="space-y-1 mt-2">
-      <label className={labelStyle}>لون الفريق (للخلفية في ورقة المباراة)</label>
+      <label className={labelStyle}>{tSetup.teamColor}</label>
       <div className="flex flex-wrap gap-2">
         {PRESET_COLORS.map((c) => (
           <button
             key={c.hex}
             onClick={() => onSelect(c.hex)}
-            className={`w-6 h-6 rounded-lg border-2 transition-all ${currentColor === c.hex ? 'border-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+            className={`w-6 h-6 rounded-lg border-2 transition-all cursor-pointer ${currentColor === c.hex ? (isDarkMode ? 'border-white scale-110 shadow-lg ring-2 ring-blue-500/40' : 'border-slate-900 scale-110 shadow-lg ring-2 ring-blue-500/30') : 'border-transparent opacity-70 hover:opacity-100'}`}
             style={{ backgroundColor: c.hex }}
             title={c.name}
           />
         ))}
-        <div className={`relative w-6 h-6 rounded-lg overflow-hidden border-2 transition-all flex items-center justify-center ${!PRESET_COLORS.some(c => c.hex === currentColor) ? 'border-white scale-110 shadow-lg' : 'border-slate-500/30 opacity-60 hover:opacity-100'}`} style={{ backgroundColor: !PRESET_COLORS.some(c => c.hex === currentColor) ? currentColor : 'transparent' }}>
-             {!PRESET_COLORS.some(c => c.hex === currentColor) ? null : <Palette size={14} className={isDarkMode ? "text-white" : "text-black"} />}
+        <div className={`relative w-6 h-6 rounded-lg overflow-hidden border-2 transition-all flex items-center justify-center ${!PRESET_COLORS.some(c => c.hex === currentColor) ? (isDarkMode ? 'border-white scale-110 shadow-lg' : 'border-slate-900 scale-110 shadow-lg') : 'border-slate-500/30 opacity-70 hover:opacity-100'}`} style={{ backgroundColor: !PRESET_COLORS.some(c => c.hex === currentColor) ? currentColor : 'transparent' }}>
+             {!PRESET_COLORS.some(c => c.hex === currentColor) ? null : <Palette size={14} className={isDarkMode ? "text-white" : "text-slate-800"} />}
              <input
                 type="color"
                 value={currentColor}
@@ -409,11 +413,11 @@ export const SetupForm: React.FC<SetupFormProps> = ({
   return (
     <div className={`rounded-3xl shadow-xl border flex flex-col h-full overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`} dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Pinned Header */}
-      <div className={`p-4 text-center flex-shrink-0 border-b ${isDarkMode ? 'border-slate-700/50' : 'border-slate-100'}`}>
+      <div className={`p-4 text-center flex-shrink-0 border-b ${isDarkMode ? 'border-slate-700/60' : 'border-slate-200'}`}>
         <h2 className={`text-xl font-black ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{tSetup.title}</h2>
-        <div className={`flex p-1 rounded-xl mt-3 ${isDarkMode ? 'bg-slate-900/50' : 'bg-slate-100'}`}>
+        <div className={`flex p-1 rounded-xl mt-3 ${isDarkMode ? 'bg-slate-900/70' : 'bg-slate-100'}`}>
           {(['details', 'teamA', 'teamB', 'officials'] as const).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all cursor-pointer ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg' : (isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-900 hover:bg-white/50')}`}>
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-1.5 text-[10px] font-black rounded-lg transition-all cursor-pointer ${activeTab === tab ? 'bg-blue-600 text-white shadow-lg' : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-700 hover:bg-white/70')}`}>
               {tab === 'details' ? tSetup.tabDetails : tab === 'teamA' ? tSetup.tabTeamA : tab === 'teamB' ? tSetup.tabTeamB : tSetup.tabOfficials}
             </button>
           ))}
@@ -547,7 +551,13 @@ export const SetupForm: React.FC<SetupFormProps> = ({
       </div>
 
       {/* Pinned Footer */}
-      <div className={`p-4 flex-shrink-0 border-t ${isDarkMode ? 'bg-slate-900/80 border-slate-700/50' : 'bg-slate-50 border-slate-100'}`}>
+      <div className={`p-4 flex-shrink-0 border-t space-y-2.5 ${isDarkMode ? 'bg-slate-900/80 border-slate-700/50' : 'bg-slate-50 border-slate-200'}`}>
+        {validationError && (
+          <div className="px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-600 dark:text-rose-300 text-xs font-black flex items-center justify-between gap-2">
+            <span>{validationError}</span>
+            <button type="button" onClick={() => setValidationError(null)} className="px-2 py-0.5 rounded-lg bg-rose-500/20 text-[10px] cursor-pointer">✕</button>
+          </div>
+        )}
         <button 
           onClick={handleStart}
           className="w-full py-3 bg-blue-600 text-white font-black rounded-xl shadow-xl shadow-blue-900/40 text-sm hover:bg-blue-500 transition-colors cursor-pointer"
@@ -555,7 +565,6 @@ export const SetupForm: React.FC<SetupFormProps> = ({
           {tSetup.saveAndStart}
         </button>
       </div>
-      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }`}</style>
     </div>
   );
 };

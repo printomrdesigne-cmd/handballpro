@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { MatchState, AppLanguage } from '../types.ts';
+import { MatchState, AppLanguage, SubscriberFeaturesConfig, DEFAULT_SUBSCRIBER_FEATURES } from '../types.ts';
 import { Trash2, Eye, Calendar, MapPin, Search, Trophy, AlertTriangle, X, History, BarChart3 } from 'lucide-react';
 
 interface ArchiveListProps {
   matches: MatchState[];
   isDarkMode: boolean;
+  effectiveFeatures?: SubscriberFeaturesConfig;
   onSelect: (m: MatchState) => void;
   onDelete: (id: string) => void;
   onOpenEvents?: (m: MatchState) => void;
@@ -15,7 +16,7 @@ interface ArchiveListProps {
 /**
  * ArchiveList displays a list of previous matches from local storage.
  */
-export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, onSelect, onDelete, onOpenEvents, onOpenAnalysis, lang = 'ar' }) => {
+export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, effectiveFeatures = DEFAULT_SUBSCRIBER_FEATURES, onSelect, onDelete, onOpenEvents, onOpenAnalysis, lang = 'ar' }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [matchToDelete, setMatchToDelete] = useState<MatchState | null>(null);
 
@@ -85,11 +86,11 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-4 flex-shrink-0">
         <h2 className="text-3xl font-black">{t.title}</h2>
         <div className={`relative w-full sm:w-72 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
-          <Search className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-500' : 'text-slate-700'}`} size={18} />
+          <Search className={`absolute ${isRtl ? 'right-4' : 'left-4'} top-1/2 -translate-y-1/2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`} size={18} />
           <input 
             type="text"
             placeholder={t.searchPlaceholder}
-            className={`w-full ${isRtl ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3 rounded-2xl border-2 outline-none font-bold text-sm transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 focus:border-blue-600' : 'bg-white border-slate-100 focus:border-blue-400'}`}
+            className={`w-full ${isRtl ? 'pr-12 pl-4' : 'pl-12 pr-4'} py-3 rounded-2xl border-2 outline-none font-bold text-sm transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100 placeholder:text-slate-500 focus:border-blue-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-blue-500'}`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -97,17 +98,17 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
       </div>
 
       {filteredMatches.length === 0 ? (
-        <div className={`flex-1 flex flex-col items-center justify-center p-12 rounded-[3rem] border-2 border-dashed text-center ${isDarkMode ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50'}`}>
-           <Trophy className="mx-auto text-slate-300 mb-4" size={48} />
-           <p className={`font-black text-base ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>{t.emptyTitle}</p>
-           <p className="text-xs text-slate-500 font-bold mt-1">{t.emptySubtitle}</p>
+        <div className={`flex-1 flex flex-col items-center justify-center p-12 rounded-[3rem] border-2 border-dashed text-center ${isDarkMode ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-100/70'}`}>
+           <Trophy className={`mx-auto mb-4 ${isDarkMode ? 'text-slate-700' : 'text-slate-300'}`} size={48} />
+           <p className={`font-black text-base ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{t.emptyTitle}</p>
+           <p className={`text-xs font-bold mt-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{t.emptySubtitle}</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           {filteredMatches.map((m) => (
             <div 
               key={m.id}
-              className={`p-5 rounded-3xl border-2 flex flex-col sm:flex-row items-center justify-between gap-4 transition-all hover:scale-[1.01] ${isDarkMode ? 'bg-slate-900/40 border-slate-800 hover:border-slate-700' : 'bg-white border-slate-100 hover:border-slate-200 shadow-sm'}`}
+              className={`p-5 rounded-3xl border-2 flex flex-col sm:flex-row items-center justify-between gap-4 transition-all hover:scale-[1.005] ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-slate-700 shadow-lg' : 'bg-white border-slate-200/80 hover:border-blue-200 shadow-sm'}`}
             >
               <div className="flex-1 space-y-2 text-center sm:text-start w-full">
                 <div className="flex items-center justify-center sm:justify-start gap-2">
@@ -139,7 +140,7 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                {onOpenAnalysis && (
+                {onOpenAnalysis && effectiveFeatures.matchAnalysis && (
                   <button
                     onClick={() => onOpenAnalysis(m)}
                     className="p-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-indigo-200 dark:border-indigo-800"
@@ -149,7 +150,7 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
                     <span className="hidden sm:inline">{lang === 'ar' ? 'تحليل' : 'Analyse'}</span>
                   </button>
                 )}
-                {onOpenEvents && (
+                {onOpenEvents && effectiveFeatures.eventsLog && (
                   <button
                     onClick={() => onOpenEvents(m)}
                     className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-slate-200 dark:border-slate-700"
@@ -160,12 +161,14 @@ export const ArchiveList: React.FC<ArchiveListProps> = ({ matches, isDarkMode, o
                     <span className="text-[10px] bg-blue-600 text-white rounded-full px-1.5 py-0.2 font-black">{m.events?.length || 0}</span>
                   </button>
                 )}
-                <button
-                  onClick={() => onSelect(m)}
-                  className="flex-1 sm:flex-none px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition-all cursor-pointer"
-                >
-                  <Eye size={14} /> {t.viewMatch}
-                </button>
+                {effectiveFeatures.liveMatch && (
+                  <button
+                    onClick={() => onSelect(m)}
+                    className="flex-1 sm:flex-none px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 transition-all cursor-pointer"
+                  >
+                    <Eye size={14} /> {t.viewMatch}
+                  </button>
+                )}
                 <button
                   onClick={() => setMatchToDelete(m)}
                   className="p-2.5 text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer"

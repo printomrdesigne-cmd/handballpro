@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { MatchState, Player, SanctionType, AppLanguage } from '../types.ts';
 import { Check, X, User, Trophy, AlertCircle, PartyPopper } from 'lucide-react';
+import { getContrastTextColor, getSafeTeamTextColor } from '../utils/colorContrast.ts';
 
 interface PenaltyShootoutProps {
   match: MatchState;
@@ -144,14 +145,14 @@ export const PenaltyShootout: React.FC<PenaltyShootoutProps> = ({
         {/* Team Away (Right in RTL - Matches Scoreboard Logic) */}
         <div className="flex flex-1 items-center gap-3 z-10 min-w-0">
           <div 
-            className={`w-12 h-12 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-5xl font-black text-white shadow-lg border-4 border-white/20 flex-shrink-0 relative ${currentTeam === 'away' && !isFinished ? 'ring-4 ring-blue-500/50 scale-105 transition-all' : ''}`}
-            style={{ backgroundColor: match.awayTeam.color }}
+            className={`w-12 h-12 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-5xl font-black shadow-lg border-4 border-white/20 flex-shrink-0 relative ${currentTeam === 'away' && !isFinished ? 'ring-4 ring-blue-500/50 scale-105 transition-all' : ''}`}
+            style={{ backgroundColor: match.awayTeam.color, color: getContrastTextColor(match.awayTeam.color) }}
           >
             {aGoals}
             {winner === 'away' && <div className="absolute -top-3 -right-3 text-green-500 bg-white rounded-full p-1 shadow-md"><PartyPopper size={20} /></div>}
           </div>
           <div className="flex flex-col min-w-0">
-            <h3 className="text-sm sm:text-xl font-black truncate" style={{ color: match.awayTeam.color }}>{match.awayTeam.name}</h3>
+            <h3 className="text-sm sm:text-xl font-black truncate" style={{ color: getSafeTeamTextColor(match.awayTeam.color, isDarkMode) }}>{match.awayTeam.name}</h3>
             <div className="mt-1 sm:mt-2">
               <ShotHistory shots={match.penaltySequence.away} total={aShots} isHome={false} />
             </div>
@@ -166,14 +167,14 @@ export const PenaltyShootout: React.FC<PenaltyShootoutProps> = ({
         {/* Team Home (Left in RTL - Matches Scoreboard Logic) */}
         <div className="flex flex-1 items-center justify-end gap-3 z-10 min-w-0 text-left">
           <div className="flex flex-col items-end min-w-0">
-            <h3 className="text-sm sm:text-xl font-black truncate" style={{ color: match.homeTeam.color }}>{match.homeTeam.name}</h3>
+            <h3 className="text-sm sm:text-xl font-black truncate" style={{ color: getSafeTeamTextColor(match.homeTeam.color, isDarkMode) }}>{match.homeTeam.name}</h3>
             <div className="mt-1 sm:mt-2">
                <ShotHistory shots={match.penaltySequence.home} total={hShots} isHome={true} />
             </div>
           </div>
            <div 
-            className={`w-12 h-12 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-5xl font-black text-white shadow-lg border-4 border-white/20 flex-shrink-0 relative ${currentTeam === 'home' && !isFinished ? 'ring-4 ring-blue-500/50 scale-105 transition-all' : ''}`}
-            style={{ backgroundColor: match.homeTeam.color }}
+            className={`w-12 h-12 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-5xl font-black shadow-lg border-4 border-white/20 flex-shrink-0 relative ${currentTeam === 'home' && !isFinished ? 'ring-4 ring-blue-500/50 scale-105 transition-all' : ''}`}
+            style={{ backgroundColor: match.homeTeam.color, color: getContrastTextColor(match.homeTeam.color) }}
           >
             {hGoals}
             {winner === 'home' && <div className="absolute -top-3 -left-3 text-green-500 bg-white rounded-full p-1 shadow-md"><PartyPopper size={20} /></div>}
@@ -185,12 +186,12 @@ export const PenaltyShootout: React.FC<PenaltyShootoutProps> = ({
         <div className={`p-4 sm:p-6 rounded-[2rem] border-2 ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-white text-lg font-black shadow-md transition-colors duration-300" style={{ backgroundColor: currentTeam === 'home' ? match.homeTeam.color : match.awayTeam.color }}>
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-lg font-black shadow-md transition-colors duration-300" style={{ backgroundColor: currentTeam === 'home' ? match.homeTeam.color : match.awayTeam.color, color: getContrastTextColor(currentTeam === 'home' ? match.homeTeam.color : match.awayTeam.color) }}>
                 {currentTeam === 'home' ? 'A' : 'B'}
               </div>
               <div>
-                <div className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${isDarkMode ? 'text-slate-500' : 'text-slate-800'}`}>{tPenalty.currentTurn}</div>
-                <div className="text-lg sm:text-2xl font-black leading-none">{currentTeam === 'home' ? match.homeTeam.name : match.awayTeam.name}</div>
+                <div className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{tPenalty.currentTurn}</div>
+                <div className={`text-lg sm:text-2xl font-black leading-none ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{currentTeam === 'home' ? match.homeTeam.name : match.awayTeam.name}</div>
               </div>
             </div>
             
@@ -245,20 +246,19 @@ export const PenaltyShootout: React.FC<PenaltyShootoutProps> = ({
       ) : (
         <div className="p-8 sm:p-12 text-center bg-green-500/10 border-4 border-green-500/20 rounded-[3rem] animate-in zoom-in duration-500">
            <Trophy size={48} className="mx-auto text-green-500 mb-4" />
-           <h3 className="text-2xl font-black mb-2">{tPenalty.winner}</h3>
-           <div className="text-4xl sm:text-5xl font-black mb-4" style={{ color: winner === 'home' ? match.homeTeam.color : match.awayTeam.color }}>
+           <h3 className={`text-2xl font-black mb-2 ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{tPenalty.winner}</h3>
+           <div className="text-4xl sm:text-5xl font-black mb-4" style={{ color: getSafeTeamTextColor(winner === 'home' ? match.homeTeam.color : match.awayTeam.color, isDarkMode) }}>
              {winner === 'home' ? match.homeTeam.name : match.awayTeam.name}
            </div>
-           <p className="text-slate-500 text-xs sm:text-sm font-bold">{tPenalty.goToSheet}</p>
+           <p className={`text-xs sm:text-sm font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{tPenalty.goToSheet}</p>
         </div>
       )}
       
       {!isFinished && (
-        <p className={`text-center mt-6 text-[10px] font-black uppercase tracking-widest opacity-60 ${isDarkMode ? 'text-slate-500' : 'text-slate-800'}`}>
+        <p className={`text-center mt-6 text-[10px] font-black uppercase tracking-widest opacity-70 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>
           {tPenalty.rule}
         </p>
       )}
-      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }`}</style>
     </div>
   );
 };

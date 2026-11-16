@@ -1,11 +1,50 @@
-import { toJpeg, toPng } from 'html-to-image';
+import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { AppLanguage } from '../types.ts';
 
 /**
- * Capture an HTML element as a crisp, full-page image and embed it onto an official A4 PDF.
- * Guarantees exact 100% paper width coverage (210mm x 297mm) with zero cutoffs,
- * intact Arabic cursive typography, and matching the complete match sheet.
+ * Creates a clean, unscaled offscreen clone at exact A4 96-DPI pixel geometry (794x1123)
+ * so mobile viewport CSS transform/overflow-hidden never clips any border or Arabic glyph.
+ */
+const mountOffscreenA4Clone = (source: HTMLElement): { host: HTMLDivElement; clone: HTMLElement } => {
+  const host = document.createElement('div');
+  host.setAttribute('data-html2canvas-ignore', 'true');
+  host.style.position = 'fixed';
+  host.style.left = '-12000px';
+  host.style.top = '0';
+  host.style.width = '794px';
+  host.style.height = '1123px';
+  host.style.overflow = 'visible';
+  host.style.backgroundColor = '#ffffff';
+  host.style.zIndex = '-1';
+  host.style.pointerEvents = 'none';
+
+  const clone = source.cloneNode(true) as HTMLElement;
+  clone.style.transform = 'none';
+  clone.style.transformOrigin = 'top left';
+  clone.style.width = '794px';
+  clone.style.minWidth = '794px';
+  clone.style.maxWidth = '794px';
+  clone.style.height = '1123px';
+  clone.style.minHeight = '1123px';
+  clone.style.maxHeight = '1123px';
+  clone.style.margin = '0';
+  clone.style.padding = '5mm';
+  clone.style.boxSizing = 'border-box';
+  clone.style.backgroundColor = '#ffffff';
+  clone.style.boxShadow = 'none';
+  clone.style.border = 'none';
+  clone.style.letterSpacing = 'normal';
+
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  return { host, clone };
+};
+
+/**
+ * Capture an HTML element as a crisp lossless PNG and embed it onto an official A4 PDF.
+ * Guarantees exact 100% paper width & height coverage (210mm x 297mm) with zero cutoffs
+ * and sharp 1px table borders + intact Arabic cursive typography.
  */
 export const generateMatchSheetPDF = async (
   elementId: string,
@@ -19,14 +58,12 @@ export const generateMatchSheetPDF = async (
     return false;
   }
 
-  // Ensure Cairo and Inter web fonts are completely loaded
   try {
     await document.fonts.ready;
   } catch (e) {
     console.warn('Font loading check skipped', e);
   }
 
-  // File naming
   const cleanName = (name: string) =>
     name.replace(/[^a-zA-Z0-9\u0600-\u06FF\s\-]/gi, '_').trim() || 'Match';
 
@@ -42,79 +79,63 @@ export const generateMatchSheetPDF = async (
 
   const fileName = `${prefix}_${cleanName(homeTeamName)}_${connector}_${cleanName(awayTeamName)}.pdf`;
 
-  // Standard A4 dimensions in pixels at 96 DPI: 210mm = 794px, 297mm = 1123px
   const A4_WIDTH_PX = 794;
   const A4_HEIGHT_PX = 1123;
 
   let imgDataUrl: string | null = null;
+  let imgFormat: 'PNG' | 'JPEG' = 'PNG';
+  let offscreenHost: HTMLDivElement | null = null;
 
-  // -------------------------------------------------------------
-  // METHOD 1: html-to-image (SVG foreignObject)
-  // Renders the element at exact 794x1123px with 2x resolution.
-  // Independent of the mobile viewport width.
-  // -------------------------------------------------------------
   try {
+    const { host, clone } = mountOffscreenA4Clone(element);
+    offscreenHost = host;
+
     const filter = (node: HTMLElement) => {
+      if (node.tagName === 'LINK' || node.tagName === 'SCRIPT') return false;
       if (node.getAttribute && node.getAttribute('data-html2canvas-ignore') === 'true') {
         return false;
       }
       return true;
     };
 
-    imgDataUrl = await toJpeg(element, {
-      quality: 0.98,
-      pixelRatio: 2.2,
-      width: A4_WIDTH_PX,
-      height: A4_HEIGHT_PX,
-      skipFonts: true, // Prevents cross-origin CSS security errors while retaining document fonts
-      filter,
-      style: {
-        transform: 'none',
-        transformOrigin: 'top left',
-        width: `${A4_WIDTH_PX}px`,
-        minWidth: `${A4_WIDTH_PX}px`,
-        maxWidth: `${A4_WIDTH_PX}px`,
-        height: `${A4_HEIGHT_PX}px`,
-        minHeight: `${A4_HEIGHT_PX}px`,
-        maxHeight: `${A4_HEIGHT_PX}px`,
-        margin: '0',
-        padding: '5mm',
-        boxSizing: 'border-box',
-        backgroundColor: '#ffffff',
-        letterSpacing: 'normal',
-      },
-    });
-  } catch (err) {
-    console.warn('Primary html-to-image rendering failed, falling back to canvas capture:', err);
-  }
-
-  // -------------------------------------------------------------
-  // METHOD 2: Fallback to html2canvas on visible viewport
-  // If html-to-image encounters unsupported features, capture the
-  // on-screen match sheet wrapper directly as seen by the user.
-  // -------------------------------------------------------------
-  if (!imgDataUrl) {
     try {
+      imgDataUrl = await toPng(clone, {
+        quality: 1,
+        pixelRatio: 2.5,
+        width: A4_WIDTH_PX,
+        height: A4_HEIGHT_PX,
+        backgroundColor: '#ffffff',
+        skipFonts: true,
+        fontEmbedCSS: '',
+        cacheBust: false,
+        filter,
+      });
+      imgFormat = 'PNG';
+    } catch (err) {
+      console.warn('Primary html-to-image PNG rendering failed, falling back to html2canvas:', err);
+    }
+
+    if (!imgDataUrl) {
       // @ts-ignore
       const html2canvasFn = window.html2canvas;
       if (!html2canvasFn) {
         throw new Error('Neither html-to-image nor html2canvas is available');
       }
 
-      // Try capturing the viewport wrapper or the element directly
-      const target = element.closest('.sheet-viewport-wrapper') || element;
-      const canvas = await html2canvasFn(target, {
-        scale: 3,
+      const canvas = await html2canvasFn(clone, {
+        scale: 2.5,
         useCORS: true,
         letterRendering: false,
         backgroundColor: '#ffffff',
         logging: false,
       });
 
-      imgDataUrl = canvas.toDataURL('image/jpeg', 0.98);
-    } catch (fallbackErr) {
-      console.error('All capture methods failed:', fallbackErr);
-      throw fallbackErr;
+      imgDataUrl = canvas.toDataURL('image/png', 1.0);
+      imgFormat = 'PNG';
+    }
+  } finally {
+    if (offscreenHost && offscreenHost.parentNode) {
+      offscreenHost.parentNode.removeChild(offscreenHost);
     }
   }
 
@@ -122,10 +143,6 @@ export const generateMatchSheetPDF = async (
     throw new Error('Failed to generate image data for match sheet');
   }
 
-  // -------------------------------------------------------------
-  // STEP 2: Paste the complete match sheet image onto an A4 PDF
-  // Fills exactly 100% of the A4 paper: width 210mm, height 297mm
-  // -------------------------------------------------------------
   const pdf = new jsPDF({
     unit: 'mm',
     format: 'a4',
@@ -133,8 +150,7 @@ export const generateMatchSheetPDF = async (
     compress: true,
   });
 
-  // Exactly cover the A4 page (0, 0, 210, 297)
-  pdf.addImage(imgDataUrl, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+  pdf.addImage(imgDataUrl, imgFormat, 0, 0, 210, 297, undefined, 'FAST');
   pdf.save(fileName);
 
   return true;

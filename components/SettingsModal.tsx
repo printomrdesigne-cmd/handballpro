@@ -147,7 +147,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }`}>
               <div className="w-24 h-24 rounded-2xl bg-white border border-slate-300 flex items-center justify-center p-2 shrink-0 shadow-sm overflow-hidden">
                 <img
-                  src={logoPreview || 'https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=200&output=png'}
+                  src={logoPreview || '/icon.svg'}
                   alt="Logo"
                   className="max-h-full max-w-full object-contain"
                 />
@@ -404,7 +404,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {/* Logo */}
                     <div className="w-1/3 flex items-center justify-center p-1">
                       <img
-                        src={logoPreview || 'https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=150&output=png'}
+                        src={logoPreview || '/icon.svg'}
                         alt="Preview"
                         className="h-12 max-w-full object-contain"
                       />

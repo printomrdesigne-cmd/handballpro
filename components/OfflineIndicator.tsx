@@ -28,7 +28,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ lang }) => {
     return (
       <aside 
         aria-label={lang === 'ar' ? 'حالة الاتصال' : 'Connection status'}
-        className="fixed bottom-4 left-4 right-4 sm:right-auto sm:left-4 z-50 flex items-center justify-between gap-3 bg-emerald-600 text-white px-4 py-2.5 rounded-2xl shadow-xl shadow-emerald-950/30 border border-emerald-400 animate-in slide-in-from-bottom duration-300"
+        className="print:hidden fixed bottom-4 left-4 right-4 sm:right-auto sm:left-4 z-50 flex items-center justify-between gap-3 bg-emerald-600 text-white px-4 py-2.5 rounded-2xl shadow-xl shadow-emerald-950/30 border border-emerald-400 animate-in slide-in-from-bottom duration-300"
       >
         <div className="flex items-center gap-2 text-xs font-bold">
           <Wifi className="w-4 h-4 shrink-0 animate-pulse" />
@@ -49,7 +49,7 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ lang }) => {
       <>
         <aside 
           aria-label={lang === 'ar' ? 'حالة عدم الاتصال' : 'Offline mode'}
-          className="fixed bottom-4 left-4 right-4 sm:right-auto sm:left-4 z-50 flex items-center justify-between gap-3 bg-amber-500 text-slate-950 px-4 py-2.5 rounded-2xl shadow-2xl border border-amber-300/80 animate-in slide-in-from-bottom duration-300"
+          className="print:hidden fixed bottom-4 left-4 right-4 sm:right-auto sm:left-4 z-50 flex items-center justify-between gap-3 bg-amber-500 text-slate-950 px-4 py-2.5 rounded-2xl shadow-2xl border border-amber-300/80 animate-in slide-in-from-bottom duration-300"
         >
           <div className="flex items-center gap-2.5 text-xs font-black">
             <span className="relative flex h-3 w-3">
@@ -78,9 +78,9 @@ export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({ lang }) => {
         </aside>
 
         {showDetailsModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-            <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-2xl border border-amber-500/30 text-gray-900 dark:text-white">
-              <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-gray-800 mb-4">
+          <div className="print:hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-amber-500/30 text-slate-900 dark:text-slate-100">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
                     <WifiOff className="w-5 h-5" />

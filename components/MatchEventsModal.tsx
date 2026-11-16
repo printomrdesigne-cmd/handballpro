@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { MatchState, MatchEvent, SanctionType, AppLanguage } from '../types.ts';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { MatchState, MatchEvent, SanctionType, AppLanguage, SubscriberFeaturesConfig, DEFAULT_SUBSCRIBER_FEATURES } from '../types.ts';
 import { 
   X, 
   History, 
@@ -48,6 +48,7 @@ import { generateAnalysisPDF } from '../utils/analysisPdfGenerator.ts';
 import { requestAIMatchAnalysis, AIMatchAnalysis } from '../utils/aiAnalysisService.ts';
 import { PDFPreviewModal } from './PDFPreviewModal.tsx';
 import { MatchAnalysisReportContent } from './MatchAnalysisReportContent.tsx';
+import { MatchSocialPosterModal } from './MatchSocialPosterModal.tsx';
 
 interface MatchEventsModalProps {
   match: MatchState;
@@ -56,6 +57,7 @@ interface MatchEventsModalProps {
   isDarkMode: boolean;
   lang?: AppLanguage;
   initialTab?: 'timeline' | 'analysis' | 'import_export' | 'add_event';
+  effectiveFeatures?: SubscriberFeaturesConfig;
 }
 
 export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
@@ -64,11 +66,38 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   onClose,
   isDarkMode,
   lang = 'ar',
-  initialTab = 'timeline'
+  initialTab = 'timeline',
+  effectiveFeatures = DEFAULT_SUBSCRIBER_FEATURES
 }) => {
   const activeLang: AppLanguage = (lang as AppLanguage) || 'ar';
   const isRtl = activeLang === 'ar';
-  const [activeTab, setActiveTab] = useState<'timeline' | 'analysis' | 'import_export' | 'add_event'>(initialTab);
+
+  const canAnalysis = effectiveFeatures.matchAnalysis;
+  const canEventsLog = effectiveFeatures.eventsLog;
+  const canExcel = effectiveFeatures.excelExport;
+  const canPdf = effectiveFeatures.matchSheetPdf;
+  const canPoster = effectiveFeatures.socialPoster;
+  const canAi = effectiveFeatures.aiAnalysis;
+  const canImportExport = canExcel || canPdf || canPoster;
+
+  const resolveSafeTab = (
+    tab: string
+  ): 'timeline' | 'analysis' | 'import_export' | 'add_event' => {
+    if (tab === 'analysis' && canAnalysis) return 'analysis';
+    if (tab === 'timeline' && canEventsLog) return 'timeline';
+    if (tab === 'add_event' && canEventsLog) return 'add_event';
+    if (tab === 'import_export' && canImportExport) return 'import_export';
+    if (canEventsLog) return 'timeline';
+    if (canAnalysis) return 'analysis';
+    if (canImportExport) return 'import_export';
+    return 'timeline';
+  };
+
+  const [activeTab, setActiveTab] = useState<'timeline' | 'analysis' | 'import_export' | 'add_event'>(() => resolveSafeTab(initialTab));
+
+  useEffect(() => {
+    setActiveTab(prev => resolveSafeTab(prev));
+  }, [canAnalysis, canEventsLog, canImportExport]);
 
   // Filter & Search states for timeline
   const [filterType, setFilterType] = useState<'all' | 'GOAL' | 'SANCTION' | 'TIMEOUT'>('all');
@@ -81,6 +110,9 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   const [isExportingPDF, setIsExportingPDF] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [showPDFPreview, setShowPDFPreview] = useState(false);
+  const [showSocialPoster, setShowSocialPoster] = useState(false);
+  const [eventToDeleteId, setEventToDeleteId] = useState<string | null>(null);
+  const [modalFeedback, setModalFeedback] = useState<{ type: 'error' | 'info' | 'success'; text: string } | null>(null);
 
   // AI Analysis states
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -134,16 +166,19 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
     return analyzeMatch(match, activeLang);
   }, [match, activeLang]);
 
-  // Handle Event Deletion
+  // Handle Event Deletion with inline confirmation
   const handleDeleteEvent = (eventId: string) => {
-    const confirmMsg = lang === 'ar' 
-      ? 'هل أنت متأكد من حذف هذا الحدث؟ ستتم إعادة حساب النتيجة والإحصائيات تلقائياً.' 
-      : 'Confirmer la suppression de cet événement ? Le score sera recalculé.';
-    if (!window.confirm(confirmMsg)) return;
+    setEventToDeleteId(eventId);
+  };
 
-    const remainingEvents = match.events.filter(e => e.id !== eventId);
+  const confirmDeleteEvent = () => {
+    if (!eventToDeleteId) return;
+    const remainingEvents = match.events.filter(e => e.id !== eventToDeleteId);
     const updated = recalculateMatchFromEvents(match, remainingEvents, 'replace');
     onUpdateMatch(updated);
+    setEventToDeleteId(null);
+    setModalFeedback({ type: 'info', text: activeLang === 'ar' ? 'تم حذف الحدث وإعادة احتساب النتيجة' : 'Événement supprimé et score recalculé' });
+    setTimeout(() => setModalFeedback(null), 3000);
   };
 
   // Handle Manual Add Event
@@ -182,11 +217,12 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   // Export Excel
   const handleExportExcel = () => {
     try {
+      setModalFeedback(null);
       setIsExportingExcel(true);
       exportMatchToExcel(match, activeLang);
     } catch (e) {
       console.error('Failed to export Excel', e);
-      alert(activeLang === 'ar' ? 'تعذر تصدير ملف الإكسل' : 'Échec de l\'exportation Excel');
+      setModalFeedback({ type: 'error', text: activeLang === 'ar' ? 'تعذر تصدير ملف الإكسل' : 'Échec de l\'exportation Excel' });
     } finally {
       setIsExportingExcel(false);
     }
@@ -195,14 +231,15 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
   // Export PDF
   const handleExportPDF = async () => {
     try {
+      setModalFeedback(null);
       setIsExportingPDF(true);
-      const ok = await generateAnalysisPDF('match-analysis-printable-report', match, activeLang);
+      const ok = await generateAnalysisPDF('match-analysis-printable-report-light', match, activeLang, { fitOnePage: false, marginMm: 10 });
       if (!ok) {
-        alert(activeLang === 'ar' ? 'تعذر إنشاء تقرير PDF، يرجى المحاولة مرة أخرى.' : 'Échec de la génération du PDF.');
+        setModalFeedback({ type: 'error', text: activeLang === 'ar' ? 'تعذر إنشاء تقرير PDF، يرجى المحاولة مرة أخرى.' : 'Échec de la génération du PDF.' });
       }
     } catch (e) {
       console.error('Failed to export PDF', e);
-      alert(activeLang === 'ar' ? 'حدث خطأ أثناء إعداد تقرير PDF' : 'Erreur lors de l\'export PDF');
+      setModalFeedback({ type: 'error', text: activeLang === 'ar' ? 'حدث خطأ أثناء إعداد تقرير PDF' : 'Erreur lors de l\'export PDF' });
     } finally {
       setIsExportingPDF(false);
     }
@@ -213,7 +250,14 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
     const text = isRtl
       ? `🤾‍♂️ *تقرير وتحليل مباراة كرة اليد الرسمية*\n🏆 *${match.homeTeam.name}* (${analysis.finalScore.home}) 🆚 (${analysis.finalScore.away}) *${match.awayTeam.name}*\n🥇 الفائز: *${analysis.winner}*\n\n📊 *أبرز مؤشرات الأداء:*\n• الشوط الأول: ${analysis.firstHalf.home} - ${analysis.firstHalf.away}\n• الشوط الثاني: ${analysis.secondHalf.home} - ${analysis.secondHalf.away}\n• هداف المباراة: ${analysis.mvpPlayer ? `${analysis.mvpPlayer.name} (#${analysis.mvpPlayer.number}) - ${analysis.mvpPlayer.goals} أهداف` : '-'}\n• عقوبات دقيقتين: ${analysis.twoMinuteImpact.homeSuspensions} للمضيف مقابل ${analysis.twoMinuteImpact.awaySuspensions} للضيف\n\n📝 *الخلاصة الفنية والتحليلية:*\n${analysis.narrativeSummaryAr}\n\n📄 تم التوثيق والتحليل بواسطة تطبيق *HandballScore PRO*.`
       : `🤾‍♂️ *Rapport & Analyse du Match - Handball*\n🏆 *${match.homeTeam.name}* (${analysis.finalScore.home}) 🆚 (${analysis.finalScore.away}) *${match.awayTeam.name}*\n🥇 Vainqueur: *${analysis.winner}*\n\n📊 *Statistiques Clés:*\n• 1ère Mi-temps: ${analysis.firstHalf.home} - ${analysis.firstHalf.away}\n• 2ème Mi-temps: ${analysis.secondHalf.home} - ${analysis.secondHalf.away}\n• Meilleur buteur: ${analysis.mvpPlayer ? `${analysis.mvpPlayer.name} - ${analysis.mvpPlayer.goals} buts` : '-'}\n\n📝 *Analyse Technique:*\n${analysis.narrativeSummaryFr}\n\n📄 Généré par *HandballScore PRO*.`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   // Generate AI Tactical Match Analysis via Gemini
@@ -299,57 +343,78 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
           isDarkMode ? 'border-slate-800 bg-slate-950/40' : 'border-slate-200 bg-slate-100/60'
         }`}>
           {/* Tab 1: Analysis */}
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'analysis'
-                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <BarChart3 size={16} />
-            <span>{lang === 'ar' ? '📊 تحليل المقابلة المتقدم' : 'Analyse du Match'}</span>
-          </button>
+          {canAnalysis && (
+            <button
+              onClick={() => setActiveTab('analysis')}
+              className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'analysis'
+                  ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <BarChart3 size={16} />
+              <span>{lang === 'ar' ? '📊 تحليل المقابلة المتقدم' : 'Analyse du Match'}</span>
+            </button>
+          )}
 
           {/* Tab 2: Timeline */}
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'timeline'
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <History size={16} />
-            <span>{lang === 'ar' ? '⏱️ سجل الأحداث الزمني' : 'Chronologie'}</span>
-          </button>
+          {canEventsLog && (
+            <button
+              onClick={() => setActiveTab('timeline')}
+              className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'timeline'
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <History size={16} />
+              <span>{lang === 'ar' ? '⏱️ سجل الأحداث الزمني' : 'Chronologie'}</span>
+            </button>
+          )}
 
           {/* Tab 3: Export */}
-          <button
-            onClick={() => setActiveTab('import_export')}
-            className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'import_export'
-                ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Download size={16} />
-            <span>{activeLang === 'ar' ? '📥 تصدير البيانات (Excel / PDF)' : 'Export (Excel / PDF)'}</span>
-          </button>
+          {canImportExport && (
+            <button
+              onClick={() => setActiveTab('import_export')}
+              className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'import_export'
+                  ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Download size={16} />
+              <span>{activeLang === 'ar' ? '📥 تصدير البيانات والملصقات' : 'Exports & Poster'}</span>
+            </button>
+          )}
 
           {/* Tab 4: Add Manual */}
-          <button
-            onClick={() => setActiveTab('add_event')}
-            className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === 'add_event'
-                ? 'border-purple-600 text-purple-600 dark:text-purple-400'
-                : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
-            }`}
-          >
-            <Plus size={16} />
-            <span>{lang === 'ar' ? '➕ إضافة حدث يدوياً' : 'Ajouter manuellement'}</span>
-          </button>
+          {canEventsLog && (
+            <button
+              onClick={() => setActiveTab('add_event')}
+              className={`py-3 px-4 font-black text-xs sm:text-sm border-b-2 flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'add_event'
+                  ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Plus size={16} />
+              <span>{lang === 'ar' ? '➕ إضافة حدث يدوياً' : 'Ajouter manuellement'}</span>
+            </button>
+          )}
         </div>
+
+        {modalFeedback && (
+          <div className={`mx-4 mt-3 px-4 py-2.5 rounded-2xl border text-xs font-black flex items-center justify-between gap-2 shrink-0 ${
+            modalFeedback.type === 'error'
+              ? 'bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-300'
+              : modalFeedback.type === 'success'
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-300'
+                : 'bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-300'
+          }`}>
+            <span>{modalFeedback.text}</span>
+            <button onClick={() => setModalFeedback(null)} className="p-1 rounded-lg hover:bg-black/10 cursor-pointer"><X size={14} /></button>
+          </div>
+        )}
 
         {/* Tab Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -379,44 +444,63 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Social Media Poster Button */}
+                  {canPoster && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSocialPoster(true)}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-700 via-indigo-700 to-cyan-600 hover:from-blue-600 hover:to-cyan-500 text-white font-black text-xs shadow-md shadow-blue-600/30 transition-all flex items-center gap-1.5 cursor-pointer ring-1 ring-cyan-400/50"
+                      title={lang === 'ar' ? 'إنشاء بوستر ملخص المباراة الاحترافي للسوشيال ميديا' : 'Affiche Résumé Réseaux Sociaux'}
+                    >
+                      <span>📸</span>
+                      <span>{lang === 'ar' ? 'بوستر الملخص (سوشيال ميديا)' : 'Poster Matchday'}</span>
+                    </button>
+                  )}
+
                   {/* AI Analysis Button */}
-                  <button
-                    type="button"
-                    onClick={handleGenerateAIAnalysis}
-                    disabled={isGeneratingAI}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    title={activeLang === 'ar' ? 'تحليل تكتيكي عميق بالذكاء الاصطناعي (Gemini)' : 'Analyse Tactique IA'}
-                  >
-                    {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
-                    <span>
-                      {isGeneratingAI 
-                        ? (activeLang === 'ar' ? 'جارٍ التحليل بالذكاء الاصطناعي...' : 'Analyse en cours...') 
-                        : (activeLang === 'ar' ? '🤖 تحليل ذكي (AI)' : 'Analyse IA')}
-                    </span>
-                  </button>
+                  {canAi && (
+                    <button
+                      type="button"
+                      onClick={handleGenerateAIAnalysis}
+                      disabled={isGeneratingAI}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-xs shadow-md shadow-indigo-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title={activeLang === 'ar' ? 'تحليل تكتيكي عميق بالذكاء الاصطناعي (Gemini)' : 'Analyse Tactique IA'}
+                    >
+                      {isGeneratingAI ? <Loader2 size={16} className="animate-spin" /> : <Bot size={16} />}
+                      <span>
+                        {isGeneratingAI 
+                          ? (activeLang === 'ar' ? 'جارٍ التحليل بالذكاء الاصطناعي...' : 'Analyse en cours...') 
+                          : (activeLang === 'ar' ? '🤖 تحليل ذكي (AI)' : 'Analyse IA')}
+                      </span>
+                    </button>
+                  )}
 
                   {/* Preview & Customize PDF */}
-                  <button
-                    type="button"
-                    onClick={() => setShowPDFPreview(true)}
-                    className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                    title={lang === 'ar' ? 'معاينة وتخصيص وتحميل تقرير PDF' : 'Aperçu et export PDF'}
-                  >
-                    <Maximize2 size={16} />
-                    <span>{lang === 'ar' ? '📄 معاينة وتصدير PDF' : 'Aperçu PDF'}</span>
-                  </button>
+                  {canPdf && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPDFPreview(true)}
+                      className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                      title={lang === 'ar' ? 'معاينة وتخصيص وتحميل تقرير PDF' : 'Aperçu et export PDF'}
+                    >
+                      <Maximize2 size={16} />
+                      <span>{lang === 'ar' ? '📄 معاينة وتصدير PDF' : 'Aperçu PDF'}</span>
+                    </button>
+                  )}
 
                   {/* Export Excel */}
-                  <button
-                    type="button"
-                    onClick={handleExportExcel}
-                    disabled={isExportingExcel}
-                    className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    title={lang === 'ar' ? 'تصدير البيانات كملف إكسل' : 'Exporter Excel'}
-                  >
-                    <FileSpreadsheet size={16} />
-                    <span>{lang === 'ar' ? 'إكسل (Excel)' : 'Excel'}</span>
-                  </button>
+                  {canExcel && (
+                    <button
+                      type="button"
+                      onClick={handleExportExcel}
+                      disabled={isExportingExcel}
+                      className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title={lang === 'ar' ? 'تصدير البيانات كملف إكسل' : 'Exporter Excel'}
+                    >
+                      <FileSpreadsheet size={16} />
+                      <span>{lang === 'ar' ? 'إكسل (Excel)' : 'Excel'}</span>
+                    </button>
+                  )}
 
                   {/* WhatsApp Summary */}
                   <button
@@ -738,9 +822,10 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                   </span>
                 </div>
 
-                {/* 2 Focused Export Cards (Excel & PDF) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* 3 Focused Export Cards (Excel, PDF & Social Media Poster) */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                   {/* CARD 1: EXCEL EXPORT */}
+                  {canExcel && (
                   <div className={`p-6 rounded-3xl border-2 flex flex-col justify-between transition-all ${
                     isDarkMode 
                       ? 'bg-slate-900/90 border-emerald-500/30 hover:border-emerald-500/50' 
@@ -793,8 +878,10 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                       <span>{activeLang === 'ar' ? 'تحميل ملف الإكسل (.xls)' : 'Télécharger le fichier Excel (.xls)'}</span>
                     </button>
                   </div>
+                  )}
 
                   {/* CARD 2: PDF REPORT */}
+                  {canPdf && (
                   <div className={`p-6 rounded-3xl border-2 flex flex-col justify-between transition-all ${
                     isDarkMode 
                       ? 'bg-slate-900/90 border-rose-500/30 hover:border-rose-500/50' 
@@ -862,6 +949,62 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
                       </button>
                     </div>
                   </div>
+                  )}
+
+                  {/* CARD 3: SOCIAL MEDIA MATCH POSTER */}
+                  {canPoster && (
+                  <div className={`p-6 rounded-3xl border-2 flex flex-col justify-between transition-all ${
+                    isDarkMode 
+                      ? 'bg-slate-900/90 border-blue-500/30 hover:border-blue-500/50' 
+                      : 'bg-blue-50/50 border-blue-200 hover:border-blue-300'
+                  }`}>
+                    <div className="space-y-4 mb-6">
+                      <div className="flex items-center justify-between">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-600/20 text-2xl">
+                          📸
+                        </div>
+                        <span className="text-xs uppercase font-black bg-blue-500/15 text-blue-600 dark:text-blue-400 px-3 py-1 rounded-full border border-blue-500/30">
+                          HD POSTER (1:1 / 4:5)
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="text-base font-black text-slate-900 dark:text-white mb-1">
+                          {activeLang === 'ar' ? 'بوستر الملخص الاحترافي (سوشيال ميديا)' : 'Affiche Résumé Matchday HD'}
+                        </h4>
+                        <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {activeLang === 'ar'
+                            ? 'تصميم رياضي احترافي جذاب للنشر على السوشيال ميديا (إنستغرام، فيسبوك، واتساب) بخلفية أضواء الملعب الكاشفة وشعارات الفرق وإحصائيات اللقاء.'
+                            : 'Affiche carrée haute définition prête pour les réseaux sociaux avec stade illuminé, score et statistiques clés.'}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 pt-2 text-xs font-bold text-slate-600 dark:text-slate-300">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'تصميم ملعب ليلي احترافي يجلب المشاهدات والتفاعل' : 'Design stade nocturne captivant'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'سجل الهدافين وإحصائيات البطاقات والأهداف' : 'Buteurs et statistiques détaillées'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 size={16} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                          <span>{activeLang === 'ar' ? 'تخصيص الهاشتاغ والشعار الرسمي والنادي' : 'Hashtags et devises personnalisables'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowSocialPoster(true)}
+                      className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-blue-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer ring-2 ring-cyan-400/30"
+                    >
+                      <span>📸</span>
+                      <span>{activeLang === 'ar' ? 'فتح وتخصيص بوستر الملخص' : 'Créer l\'Affiche Réseaux'}</span>
+                    </button>
+                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1082,14 +1225,80 @@ export const MatchEventsModal: React.FC<MatchEventsModalProps> = ({
         </div>
       </div>
 
+      {eventToDeleteId && (
+        <div className="fixed inset-0 z-[450] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
+          <div className={`w-full max-w-sm rounded-3xl p-6 border-2 shadow-2xl text-center ${
+            isDarkMode ? 'bg-slate-900 border-rose-500/40 text-white' : 'bg-white border-rose-200 text-slate-900'
+          }`}>
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/15 text-rose-500 flex items-center justify-center mx-auto mb-3">
+              <Trash2 size={28} />
+            </div>
+            <h4 className="text-base font-black mb-1">
+              {activeLang === 'ar' ? 'تأكيد حذف الحدث' : 'Confirmer la suppression'}
+            </h4>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+              {activeLang === 'ar'
+                ? 'هل أنت متأكد من حذف هذا الحدث؟ ستتم إعادة حساب النتيجة والإحصائيات تلقائياً.'
+                : 'Confirmer la suppression de cet événement ? Le score sera recalculé automatiquement.'}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={confirmDeleteEvent}
+                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg cursor-pointer"
+              >
+                {activeLang === 'ar' ? 'نعم، احذف الحدث' : 'Oui, supprimer'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventToDeleteId(null)}
+                className={`py-2.5 rounded-xl font-black text-xs border cursor-pointer ${
+                  isDarkMode ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                {activeLang === 'ar' ? 'تراجع' : 'Annuler'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showPDFPreview && (
         <PDFPreviewModal
           match={match}
           analysis={analysis}
+          aiAnalysis={aiAnalysis}
           isDarkMode={isDarkMode}
           lang={activeLang}
           onClose={() => setShowPDFPreview(false)}
         />
+      )}
+
+      {showSocialPoster && (
+        <MatchSocialPosterModal
+          match={match}
+          isDarkMode={isDarkMode}
+          lang={activeLang}
+          onClose={() => setShowSocialPoster(false)}
+        />
+      )}
+
+      {/* Always-light A4 source container for direct multi-page PDF exports regardless of active app theme */}
+      {canPdf && (
+        <div
+          aria-hidden="true"
+          style={{ position: 'fixed', left: '-12000px', top: 0, width: '794px', pointerEvents: 'none', zIndex: -1 }}
+        >
+          <div id="match-analysis-printable-report-light" className="bg-white text-slate-900 p-6">
+            <MatchAnalysisReportContent
+              match={match}
+              analysis={analysis}
+              aiAnalysis={aiAnalysis}
+              isDarkMode={false}
+              lang={activeLang}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

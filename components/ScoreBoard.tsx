@@ -2,6 +2,7 @@ import React, { useRef, useState, useMemo } from 'react';
 import { MatchState, MatchPeriod, SanctionType, AppLanguage } from '../types.ts';
 import { Play, Pause, Ban, Flag, ChevronLeft, ChevronRight, RotateCcw, Timer, History } from 'lucide-react';
 import { translations } from '../utils/translations.ts';
+import { getContrastTextColor, getSafeTeamTextColor } from '../utils/colorContrast.ts';
 
 interface ScoreBoardProps {
   match: MatchState;
@@ -222,7 +223,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
       <div className="flex items-start justify-between relative z-10 px-1 sm:px-6">
         {/* Team 1 Side (Home) */}
         <div className="flex flex-col items-center gap-1.5 sm:gap-3 flex-1">
-          <h3 className="font-black text-xs sm:text-base truncate max-w-[85px] sm:max-w-[140px] text-center" style={{ color: match.homeTeam.color }}>
+          <h3 className="font-black text-xs sm:text-base truncate max-w-[85px] sm:max-w-[140px] text-center" style={{ color: getSafeTeamTextColor(match.homeTeam.color, isDarkMode) }}>
             {match.homeTeam.name}
           </h3>
           
@@ -235,17 +236,17 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
                 ? (lang === 'ar' ? 'اضغط لتسجيل هدف للاعب المحدد' : 'Cliquez pour enregistrer un but')
                 : (lang === 'ar' ? 'حدد رقم اللاعب أولاً ثم اضغط هنا لتسجيل الهدف' : 'Sélectionnez un joueur puis cliquez pour marquer')
             }
-            className={`w-14 h-14 sm:w-28 sm:h-28 rounded-2xl sm:rounded-[2rem] flex flex-col items-center justify-center shadow-xl sm:shadow-2xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative group ${
+            className={`w-14 h-14 sm:w-28 sm:h-28 rounded-2xl sm:rounded-[2rem] flex flex-col items-center justify-center shadow-xl sm:shadow-2xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative group border border-black/10 dark:border-white/15 ${
               selectedTarget?.type === 'player' && selectedTarget.team === 'home'
                 ? 'ring-4 ring-emerald-400 ring-offset-2 dark:ring-offset-slate-900 animate-pulse'
                 : ''
             }`}
-            style={{ backgroundColor: match.homeTeam.color }}
+            style={{ backgroundColor: match.homeTeam.color, color: getContrastTextColor(match.homeTeam.color) }}
           >
-            <span className="text-3xl sm:text-6xl font-black text-white drop-shadow-md leading-none">
+            <span className="text-3xl sm:text-6xl font-black drop-shadow-sm leading-none">
               {match.score.home}
             </span>
-            <span className="text-[7.5px] sm:text-[10px] font-black text-white/95 uppercase tracking-tight mt-0.5 sm:mt-1 bg-black/30 px-1 sm:px-2 py-0.5 rounded-full shadow-inner">
+            <span className={`text-[7.5px] sm:text-[10px] font-black uppercase tracking-tight mt-0.5 sm:mt-1 px-1 sm:px-2 py-0.5 rounded-full shadow-inner ${getContrastTextColor(match.homeTeam.color) === '#0f172a' ? 'bg-black/15 text-slate-950' : 'bg-black/30 text-white/95'}`}>
               {lang === 'ar' ? '+ هدف' : '+ But'}
             </span>
           </button>
@@ -315,7 +316,7 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
 
         {/* Team 2 Side (Away) */}
         <div className="flex flex-col items-center gap-1.5 sm:gap-3 flex-1">
-          <h3 className="font-black text-xs sm:text-base truncate max-w-[85px] sm:max-w-[140px] text-center" style={{ color: match.awayTeam.color }}>
+          <h3 className="font-black text-xs sm:text-base truncate max-w-[85px] sm:max-w-[140px] text-center" style={{ color: getSafeTeamTextColor(match.awayTeam.color, isDarkMode) }}>
             {match.awayTeam.name}
           </h3>
 
@@ -328,17 +329,17 @@ export const ScoreBoard: React.FC<ScoreBoardProps> = ({
                 ? (lang === 'ar' ? 'اضغط لتسجيل هدف للاعب المحدد' : 'Cliquez pour enregistrer un but')
                 : (lang === 'ar' ? 'حدد رقم اللاعب أولاً ثم اضغط هنا لتسجيل الهدف' : 'Sélectionnez un joueur puis cliquez pour marquer')
             }
-            className={`w-14 h-14 sm:w-28 sm:h-28 rounded-2xl sm:rounded-[2rem] flex flex-col items-center justify-center shadow-xl sm:shadow-2xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative group ${
+            className={`w-14 h-14 sm:w-28 sm:h-28 rounded-2xl sm:rounded-[2rem] flex flex-col items-center justify-center shadow-xl sm:shadow-2xl transition-all transform hover:scale-105 active:scale-95 cursor-pointer relative group border border-black/10 dark:border-white/15 ${
               selectedTarget?.type === 'player' && selectedTarget.team === 'away'
                 ? 'ring-4 ring-emerald-400 ring-offset-2 dark:ring-offset-slate-900 animate-pulse'
                 : ''
             }`}
-            style={{ backgroundColor: match.awayTeam.color }}
+            style={{ backgroundColor: match.awayTeam.color, color: getContrastTextColor(match.awayTeam.color) }}
           >
-            <span className="text-3xl sm:text-6xl font-black text-white drop-shadow-md leading-none">
+            <span className="text-3xl sm:text-6xl font-black drop-shadow-sm leading-none">
               {match.score.away}
             </span>
-            <span className="text-[7.5px] sm:text-[10px] font-black text-white/95 uppercase tracking-tight mt-0.5 sm:mt-1 bg-black/30 px-1 sm:px-2 py-0.5 rounded-full shadow-inner">
+            <span className={`text-[7.5px] sm:text-[10px] font-black uppercase tracking-tight mt-0.5 sm:mt-1 px-1 sm:px-2 py-0.5 rounded-full shadow-inner ${getContrastTextColor(match.awayTeam.color) === '#0f172a' ? 'bg-black/15 text-slate-950' : 'bg-black/30 text-white/95'}`}>
               {lang === 'ar' ? '+ هدف' : '+ But'}
             </span>
           </button>

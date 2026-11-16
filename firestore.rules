@@ -1,27 +1,234 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 1. Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Primitive Helpers
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    function isCentralManager() {
-      return isSignedIn() && (
-        request.auth.token.email == 'printomrdesigne@gmail.com' ||
-        request.auth.token.email == 'mohamani.figuig@gmail.com' ||
-        request.auth.token.email == 'omrhaman.figuig@gmail.com' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*admin.*'))
-      );
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isCentralManager());
-      allow list: if isSignedIn() && isCentralManager();
-      allow write: if isSignedIn() && (request.auth.uid == userId || isCentralManager());
+    function incoming() {
+      return request.resource.data;
+    }
 
+    function existing() {
+      return resource.data;
+    }
+
+    // Central Manager check enforces verified email token to prevent email spoofing
+    function isCentralManager() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true && (
+          request.auth.token.email == 'printomrdesigne@gmail.com' ||
+          request.auth.token.email == 'mohamani.figuig@gmail.com' ||
+          request.auth.token.email == 'omrhaman.figuig@gmail.com'
+        );
+    }
+
+    // Allowed feature flag keys matching SubscriptionFeatureKey in types.ts
+    function isValidFeatureMap(m) {
+      return m is map &&
+        m.keys().hasOnly([
+          'newMatch',
+          'liveMatch',
+          'matchSheetPdf',
+          'matchAnalysis',
+          'eventsLog',
+          'archive',
+          'scheduleManager',
+          'excelExport',
+          'socialPoster',
+          'aiAnalysis',
+          'customBranding'
+        ]) &&
+        (!('newMatch' in m) || m.newMatch is bool) &&
+        (!('liveMatch' in m) || m.liveMatch is bool) &&
+        (!('matchSheetPdf' in m) || m.matchSheetPdf is bool) &&
+        (!('matchAnalysis' in m) || m.matchAnalysis is bool) &&
+        (!('eventsLog' in m) || m.eventsLog is bool) &&
+        (!('archive' in m) || m.archive is bool) &&
+        (!('scheduleManager' in m) || m.scheduleManager is bool) &&
+        (!('excelExport' in m) || m.excelExport is bool) &&
+        (!('socialPoster' in m) || m.socialPoster is bool) &&
+        (!('aiAnalysis' in m) || m.aiAnalysis is bool) &&
+        (!('customBranding' in m) || m.customBranding is bool);
+    }
+
+    // Validation Blueprint: User entity
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'isActive']) &&
+        data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'phone',
+          'clubName',
+          'isPro',
+          'isActive',
+          'isBlocked',
+          'blockedAt',
+          'blockReason',
+          'activationCode',
+          'planId',
+          'licenseKey',
+          'subscriptionPrice',
+          'subscriptionExpiresAt',
+          'renewedAt',
+          'managerNotes',
+          'enabledFeatures',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() <= 200 &&
+        data.displayName is string && data.displayName.size() <= 120 &&
+        data.isActive is bool &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 40)) &&
+        (!('clubName' in data) || (data.clubName is string && data.clubName.size() <= 120)) &&
+        (!('isPro' in data) || data.isPro is bool) &&
+        (!('isBlocked' in data) || data.isBlocked is bool) &&
+        (!('blockedAt' in data) || (data.blockedAt is string && data.blockedAt.size() <= 64)) &&
+        (!('blockReason' in data) || (data.blockReason is string && data.blockReason.size() <= 500)) &&
+        (!('activationCode' in data) || (data.activationCode is string && data.activationCode.size() <= 64)) &&
+        (!('planId' in data) || (data.planId is string && data.planId.size() <= 64)) &&
+        (!('licenseKey' in data) || (data.licenseKey is string && data.licenseKey.size() <= 64)) &&
+        (!('subscriptionPrice' in data) || (data.subscriptionPrice is string && data.subscriptionPrice.size() <= 64)) &&
+        (!('subscriptionExpiresAt' in data) || (data.subscriptionExpiresAt is string && data.subscriptionExpiresAt.size() <= 64)) &&
+        (!('renewedAt' in data) || (data.renewedAt is string && data.renewedAt.size() <= 64)) &&
+        (!('managerNotes' in data) || (data.managerNotes is string && data.managerNotes.size() <= 1000)) &&
+        (!('enabledFeatures' in data) || isValidFeatureMap(data.enabledFeatures)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // Validation Blueprint: UserMatch subcollection entity
+    function isValidUserMatch(data, userId, matchId) {
+      return data.keys().hasAll(['userId', 'id']) &&
+        data.keys().hasOnly(['userId', 'id', 'details', 'score', 'updatedAt']) &&
+        isValidId(data.userId) && data.userId == userId &&
+        isValidId(data.id) && data.id == matchId &&
+        (!('details' in data) || (data.details is string && data.details.size() <= 20000)) &&
+        (!('score' in data) || (data.score is string && data.score.size() <= 500)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // Validation Blueprint: GlobalFeaturesConfig entity
+    function isValidGlobalFeaturesConfig(data) {
+      return data.keys().hasAll(['features', 'updatedAt']) &&
+        data.keys().hasOnly(['features', 'updatedAt', 'updatedBy']) &&
+        isValidFeatureMap(data.features) &&
+        data.updatedAt is string && data.updatedAt.size() <= 64 &&
+        (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 200));
+    }
+
+    // 3. Collection Rules: Users & Subscribers
+    match /users/{userId} {
+      // PII isolated strictly to profile owner or verified Central Manager
+      allow get: if isSignedIn() && isValidId(userId) && (
+        request.auth.uid == userId || isCentralManager()
+      );
+      allow list: if isCentralManager();
+
+      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
+        isCentralManager() ||
+        (
+          request.auth.uid == userId &&
+          incoming().uid == request.auth.uid &&
+          incoming().isActive == false &&
+          (!('isPro' in incoming()) || incoming().isPro == false) &&
+          (!('isBlocked' in incoming()) || incoming().isBlocked == false) &&
+          !('enabledFeatures' in incoming()) &&
+          !('managerNotes' in incoming())
+        )
+      );
+
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming()) && (
+        isCentralManager() ||
+        (
+          request.auth.uid == userId &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+          (
+            // Action 1: Subscriber edits non-privileged profile fields only
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'clubName', 'updatedAt']) ||
+            // Action 2: Subscriber activates account with pre-assigned activationCode (when not blocked)
+            (
+              existing().isBlocked != true &&
+              'activationCode' in existing() &&
+              existing().activationCode is string &&
+              existing().activationCode.size() >= 4 &&
+              incoming().activationCode == existing().activationCode &&
+              incoming().licenseKey is string &&
+              incoming().licenseKey == existing().activationCode &&
+              incoming().isActive == true &&
+              incoming().isPro == true &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'isActive',
+                'isPro',
+                'licenseKey',
+                'subscriptionPrice',
+                'subscriptionExpiresAt',
+                'updatedAt'
+              ])
+            )
+          )
+        )
+      );
+
+      allow delete: if isCentralManager() && isValidId(userId);
+
+      // Subcollection: User Matches
       match /matches/{matchId} {
-        allow read, write: if isSignedIn() && (request.auth.uid == userId || isCentralManager());
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(matchId) && (
+          request.auth.uid == userId || isCentralManager()
+        );
+        allow list: if isSignedIn() && (
+          request.auth.uid == userId || isCentralManager()
+        ) && resource.data.userId == userId;
+
+        allow create: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(matchId) &&
+          isValidUserMatch(incoming(), userId, matchId) &&
+          (request.auth.uid == userId || isCentralManager()) &&
+          exists(/databases/$(database)/documents/users/$(userId));
+
+        allow update: if isSignedIn() &&
+          isValidId(userId) &&
+          isValidId(matchId) &&
+          isValidUserMatch(incoming(), userId, matchId) && (
+            isCentralManager() ||
+            (
+              request.auth.uid == userId &&
+              incoming().userId == existing().userId &&
+              incoming().id == existing().id &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['details', 'score', 'updatedAt'])
+            )
+          );
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(matchId) && (
+          request.auth.uid == userId || isCentralManager()
+        );
       }
+    }
+
+    // 4. Collection Rules: Global Subscriber Feature Toggles (Central Manager Managed)
+    match /app_config/{configId} {
+      allow get: if isSignedIn() && configId == 'subscriber_features';
+      allow list: if isCentralManager();
+      allow create, update: if isCentralManager() &&
+        configId == 'subscriber_features' &&
+        isValidGlobalFeaturesConfig(incoming());
+      allow delete: if false;
     }
   }
 }

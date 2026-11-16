@@ -6,6 +6,8 @@ import {
   logoutUser, 
   activateUserWithCode, 
   resetUserPassword,
+  isUserEffectivelyActive,
+  isUserSubscriptionExpired,
   UserProfile,
   CENTRAL_MANAGER_EMAIL,
   isCentralManagerEmail 
@@ -129,9 +131,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (mode === 'login') {
         const profile = await loginWithEmail(email, password);
         onAuthSuccess(profile);
-        if (profile.isActive) {
+        if (isUserEffectivelyActive(profile)) {
           setSuccessMsg(lang === 'ar' ? 'تم تسجيل الدخول بنجاح! مرحباً بك.' : 'Connexion réussie ! Bienvenue.');
           setTimeout(() => onClose(), 1200);
+        } else if (profile.isBlocked) {
+          setErrorMsg(profile.blockReason || (lang === 'ar' ? 'هذا الحساب مغلق من قِبل المسير المركزي.' : 'Ce compte est bloqué par le gestionnaire.'));
+        } else if (isUserSubscriptionExpired(profile)) {
+          setErrorMsg(lang === 'ar' ? 'انتهت مدة صلاحية الاشتراك السنوي. يرجى التواصل مع المسير المركزي للتجديد.' : 'Abonnement expiré. Veuillez renouveler.');
         } else {
           setSuccessMsg(lang === 'ar' ? 'تم تسجيل الدخول. حسابك في انتظار كود التفعيل من المسير المركزي.' : 'Connecté. Compte en attente de code d\'activation.');
         }
@@ -251,7 +257,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 رقم الهاتف: ${phoneStr}
 لقد قمت بملأ استمارة التسجيل في تطبيق HandballScore Pro، وأنتظر استلام كود التفعيل الخاص بحسابي. شكراً جزيلاً!`;
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    const a = document.createElement('a');
+    a.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -276,9 +288,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           /* Profile & Account Details View */
           <div className="text-center py-2 space-y-4">
             <div className={`w-20 h-20 rounded-3xl text-white flex items-center justify-center mx-auto shadow-xl rotate-2 ${
-              currentUser.isActive ? 'bg-emerald-600 shadow-emerald-600/30' : 'bg-amber-500 shadow-amber-500/30'
+              isUserEffectivelyActive(currentUser) ? 'bg-emerald-600 shadow-emerald-600/30' : currentUser.isBlocked ? 'bg-rose-600 shadow-rose-600/30' : 'bg-amber-500 shadow-amber-500/30'
             }`}>
-              {currentUser.isActive ? <ShieldCheck size={40} /> : <Clock size={40} />}
+              {isUserEffectivelyActive(currentUser) ? <ShieldCheck size={40} /> : currentUser.isBlocked ? <Lock size={40} /> : <Clock size={40} />}
             </div>
 
             <div>
@@ -312,7 +324,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             )}
 
             {/* Account Status Box */}
-            {currentUser.isActive ? (
+            {isUserEffectivelyActive(currentUser) ? (
               <div className={`p-4 rounded-2xl border text-start space-y-2 ${
                 isDarkMode ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'
               }`}>
@@ -324,8 +336,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] font-bold text-slate-500 leading-relaxed">
-                  تم تفعيل حسابك من قِبل المسير المركزي. يمكنك الآن استخدام كافة مميزات التطبيق، إدارة وتحكيم المباريات بدون إنترنت، وطباعة ورقة المباراة الرسمية.
+                  تم تفعيل حسابك من قِبل المسير المركزي. يمكنك الآن استخدام كافة الميزات المتاحة في اشتراكك بدون إنترنت.
                 </p>
+              </div>
+            ) : currentUser.isBlocked ? (
+              <div className={`p-5 rounded-3xl border-2 text-start space-y-3 ${
+                isDarkMode ? 'bg-rose-950/20 border-rose-500/40 text-rose-200' : 'bg-rose-50 border-rose-300 text-rose-900'
+              }`}>
+                <div className="flex items-center gap-2 font-black text-sm text-rose-600 dark:text-rose-400">
+                  <Lock size={18} />
+                  <span>حساب مغلق أو محجوب حالياً</span>
+                </div>
+                <p className="text-xs font-bold leading-relaxed">
+                  {currentUser.blockReason || 'تم إغلاق هذا الحساب مؤقتاً من طرف المسير المركزي. يرجى التواصل مع الإدارة لإعادة تفعيله.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={contactManagerWhatsApp}
+                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <MessageSquare size={15} />
+                  <span>التواصل مع المسير المركزي عبر الواتساب</span>
+                </button>
               </div>
             ) : (
               /* PENDING ACTIVATION BOX */

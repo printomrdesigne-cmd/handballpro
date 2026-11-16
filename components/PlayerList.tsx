@@ -94,7 +94,7 @@ export const PlayerList: React.FC<PlayerListProps> = ({
                     disabled={!canScore}
                     onClick={() => canScore && onGoal(p.id, true)} 
                     onContextMenu={e => { e.preventDefault(); canScore && onGoal(p.id, false); }} 
-                    className={`h-[38px] w-full rounded-xl flex items-center justify-center font-black text-base border-2 transition-all active:scale-90 ${p.goals > 0 ? (isDarkMode ? 'bg-slate-700 border-slate-600 text-white shadow-sm' : 'bg-slate-100 border-slate-300 text-slate-900 shadow-sm') : (isDarkMode ? 'bg-slate-900/50 border-slate-800 text-transparent' : 'bg-slate-50 border-slate-100 text-transparent')} ${!canScore ? 'cursor-not-allowed opacity-40 bg-slate-200/50' : (isDarkMode ? 'hover:border-blue-500' : 'hover:border-blue-300')}`}
+                    className={`h-[38px] w-full rounded-xl flex items-center justify-center font-black text-base border-2 transition-all active:scale-90 ${p.goals > 0 ? (isDarkMode ? 'bg-slate-700 border-slate-600 text-white shadow-sm' : 'bg-slate-100 border-slate-300 text-slate-900 shadow-sm') : (isDarkMode ? 'bg-slate-900/50 border-slate-800 text-slate-700' : 'bg-slate-50 border-slate-200 text-slate-300')} ${!canScore ? (isDarkMode ? 'cursor-not-allowed opacity-40 bg-slate-900/60' : 'cursor-not-allowed opacity-40 bg-slate-200/60') : (isDarkMode ? 'hover:border-blue-500' : 'hover:border-blue-400')}`}
                   >
                     {p.goals || '0'}
                   </button>
@@ -158,8 +158,8 @@ export const PlayerList: React.FC<PlayerListProps> = ({
 
       <div className={`p-5 border-t flex items-center justify-between z-40 transition-all duration-300 ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'} ${!isTimerActive ? 'grayscale-[0.5] opacity-80' : ''}`}>
         <div className="min-w-0 flex-1">
-          <span className={`text-[9px] font-black uppercase block mb-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-600'}`}>المؤطر المسؤول</span>
-          <span className={`text-base font-black truncate block ${isDarkMode ? 'text-slate-200' : 'text-black'}`}>{team.coach.name}</span>
+          <span className={`text-[9px] font-black uppercase block mb-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>المؤطر المسؤول</span>
+          <span className={`text-base font-black truncate block ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>{team.coach.name}</span>
         </div>
         <div className="flex items-center gap-3 pl-1">
           <div className="flex gap-1.5">
@@ -167,10 +167,10 @@ export const PlayerList: React.FC<PlayerListProps> = ({
               disabled={!isTimerActive || coachRed}
               onClick={() => isTimerActive && !coachRed && onCoachSanction(SanctionType.YELLOW)} 
               onContextMenu={e => { e.preventDefault(); isTimerActive && coachYellowCount > 0 && onRemoveCoachSanction(); }} 
-              className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all active:scale-90 ${coachYellowCount > 0 ? 'bg-yellow-400 border-yellow-500 shadow-lg' : 'bg-slate-800 border-slate-700 opacity-50'} ${!isTimerActive ? 'cursor-not-allowed' : ''}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all active:scale-90 ${coachYellowCount > 0 ? 'bg-yellow-400 border-yellow-500 shadow-lg' : (isDarkMode ? 'bg-slate-800 border-slate-700 opacity-60' : 'bg-slate-100 border-slate-300 opacity-75 hover:opacity-100')} ${!isTimerActive ? 'cursor-not-allowed' : ''}`}
             >
               <div className="relative flex">
-                <div className="w-4 h-6 rounded-sm border border-yellow-700/20 bg-yellow-700/30" />
+                <div className={`w-4 h-6 rounded-sm border ${coachYellowCount > 0 ? 'border-yellow-700/30 bg-yellow-700/30' : 'border-amber-500/50 bg-amber-400/30'}`} />
                 {coachYellowCount > 1 && <div className="absolute -right-2 -top-2 w-4 h-4 bg-white text-yellow-600 rounded-full text-[10px] flex items-center justify-center font-black border border-yellow-500">2</div>}
               </div>
             </button>
@@ -178,17 +178,17 @@ export const PlayerList: React.FC<PlayerListProps> = ({
               disabled={!isTimerActive || coachRed}
               onClick={() => isTimerActive && !coachRed && onCoachSanction(SanctionType.RED)} 
               onContextMenu={e => { e.preventDefault(); isTimerActive && coachRed && onRemoveCoachSanction(); }} 
-              className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all active:scale-90 ${coachRed ? 'bg-red-600 border-red-700 shadow-lg' : 'bg-slate-800 border-slate-700 opacity-50'} ${!isTimerActive ? 'cursor-not-allowed' : ''}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all active:scale-90 ${coachRed ? 'bg-red-600 border-red-700 shadow-lg' : (isDarkMode ? 'bg-slate-800 border-slate-700 opacity-60' : 'bg-slate-100 border-slate-300 opacity-75 hover:opacity-100')} ${!isTimerActive ? 'cursor-not-allowed' : ''}`}
             >
-              <div className="w-4 h-6 rounded-sm border border-white/20 bg-white/20" />
+              <div className={`w-4 h-6 rounded-sm border ${coachRed ? 'border-white/30 bg-white/30' : 'border-red-500/50 bg-red-500/20'}`} />
             </button>
             <button 
               disabled={!isTimerActive || coachBlue}
               onClick={() => isTimerActive && !coachBlue && onCoachSanction(SanctionType.BLUE)} 
               onContextMenu={e => { e.preventDefault(); isTimerActive && coachBlue && onRemoveCoachSanction(); }} 
-              className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all active:scale-90 ${coachBlue ? 'bg-blue-600 border-blue-700 shadow-lg' : 'bg-slate-800 border-slate-700 opacity-50'} ${!isTimerActive ? 'cursor-not-allowed' : ''}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all active:scale-90 ${coachBlue ? 'bg-blue-600 border-blue-700 shadow-lg' : (isDarkMode ? 'bg-slate-800 border-slate-700 opacity-60' : 'bg-slate-100 border-slate-300 opacity-75 hover:opacity-100')} ${!isTimerActive ? 'cursor-not-allowed' : ''}`}
             >
-              <div className="w-4 h-6 rounded-sm border border-white/20 bg-white/20" />
+              <div className={`w-4 h-6 rounded-sm border ${coachBlue ? 'border-white/30 bg-white/30' : 'border-blue-500/50 bg-blue-500/20'}`} />
             </button>
           </div>
         </div>

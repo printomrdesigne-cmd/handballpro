@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { MatchState, MatchPeriod, SanctionType, Player, Officials, MatchDetails, Team, MatchEvent, ScheduledMatch, Staff, AppLanguage } from './types.ts';
+import { MatchState, MatchPeriod, SanctionType, Player, Officials, MatchDetails, Team, MatchEvent, ScheduledMatch, Staff, AppLanguage, SubscriberFeaturesConfig, DEFAULT_SUBSCRIBER_FEATURES } from './types.ts';
 import { SetupForm } from './components/SetupForm.tsx';
 import { SetupChoice } from './components/SetupChoice.tsx';
 import { ScoreBoard } from './components/ScoreBoard.tsx';
@@ -13,14 +13,17 @@ import { ScheduleManager } from './components/ScheduleManager.tsx';
 import { SubscriptionModal } from './components/SubscriptionModal.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
 import { MatchEventsModal } from './components/MatchEventsModal.tsx';
-import { getSubscriptionState, SubscriptionState } from './utils/subscriptionService.ts';
+import { getSubscriptionState, deactivateLicense, SubscriptionState } from './utils/subscriptionService.ts';
 import { 
   subscribeToAuth, 
   fetchUserProfile, 
-  assignUserProStatus, 
+  subscribeToUserProfile,
+  subscribeToGlobalFeaturesConfig,
+  resolveEffectiveFeatures,
+  isUserEffectivelyActive,
+  isUserSubscriptionExpired,
   adminFetchSubscriberStats,
   UserProfile, 
-  CENTRAL_MANAGER_EMAIL, 
   isCentralManagerEmail 
 } from './utils/firebase.ts';
 import { translations, getStoredLanguage, setStoredLanguage } from './utils/translations.ts';
@@ -28,7 +31,7 @@ import { PWAInstallButton } from './components/PWAInstallButton.tsx';
 import { OfflineIndicator } from './components/OfflineIndicator.tsx';
 import { HomeDashboard } from './components/HomeDashboard.tsx';
 import { SplashAnimation } from './components/SplashAnimation.tsx';
-import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound, MessageSquare, BarChart3 } from 'lucide-react';
+import { Trophy, ClipboardList, Plus, Play, History, Sun, Moon, FileText, X, ChevronRight, ChevronLeft, Zap, CloudCheck, CloudOff, Loader2, RefreshCw, Database, Settings as SettingsIcon, Lock, Link as LinkIcon, ExternalLink, AlertTriangle, Coins, Edit2, Menu, Info, Crown, Sparkles, ShieldCheck, User, Globe, ShieldAlert, KeyRound, MessageSquare, BarChart3, Sliders } from 'lucide-react';
 
 const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
@@ -81,7 +84,13 @@ const App: React.FC = () => {
   });
 
   const [selectedTarget, setSelectedTarget] = useState<{ type: 'player' | 'coach' | 'assistant-coach', team: 'home' | 'away', id?: string } | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('handball_dark_mode');
+      if (saved !== null) return saved === 'true';
+    } catch {}
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
   const [timeoutTimer, setTimeoutTimer] = useState<number | null>(null);
   const [timerSpeed, setTimerSpeed] = useState(1);
 
@@ -107,10 +116,12 @@ const App: React.FC = () => {
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginPass, setLoginPass] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // Center Password Verification
   const [showCenterPasswordModal, setShowCenterPasswordModal] = useState(false);
   const [centerLoginPass, setCenterLoginPass] = useState('');
+  const [centerLoginError, setCenterLoginError] = useState<string | null>(null);
   const [pendingScheduledMatch, setPendingScheduledMatch] = useState<ScheduledMatch | null>(null);
 
   // Penalty Setup Modal
@@ -156,22 +167,30 @@ const App: React.FC = () => {
     });
   };
 
-  // Subscription / License State
+  // Subscription / License & Global Features State
   const [subscription, setSubscription] = useState<SubscriptionState>(() => getSubscriptionState());
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const [subscriptionModalTab, setSubscriptionModalTab] = useState<'activate' | 'manager'>('activate');
+  const [subscriptionModalTab, setSubscriptionModalTab] = useState<'activate' | 'manager' | 'features'>('activate');
+  const [globalFeatures, setGlobalFeatures] = useState<SubscriberFeaturesConfig>(DEFAULT_SUBSCRIBER_FEATURES);
+  const [showBackToSetupConfirm, setShowBackToSetupConfirm] = useState(false);
 
   // User Account (Firebase Auth) State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalInitialMode, setAuthModalInitialMode] = useState<'login' | 'register'>('login');
   const isCentralManager = isCentralManagerEmail(currentUser?.email);
-  // An account is active if it's the central manager OR if the user is activated and NOT blocked
+  // An account is active if it's the central manager OR if the user is activated, not blocked, and not expired
   const isUserBlocked = Boolean(currentUser?.isBlocked && !isCentralManager);
-  const isAccountActive = Boolean(currentUser && (isCentralManager || (currentUser.isActive && !currentUser.isBlocked)));
+  const isUserExpired = isUserSubscriptionExpired(currentUser);
+  const isAccountActive = isUserEffectivelyActive(currentUser);
+
+  const effectiveFeatures = useMemo(
+    () => resolveEffectiveFeatures(currentUser, globalFeatures),
+    [currentUser, globalFeatures]
+  );
 
   // Subscriber statistics for Central Manager
-  const [subscriberStats, setSubscriberStats] = useState<{ total: number; active: number; closed: number }>({ total: 0, active: 0, closed: 0 });
+  const [subscriberStats, setSubscriberStats] = useState<{ total: number; active: number; closed: number; expired?: number }>({ total: 0, active: 0, closed: 0, expired: 0 });
 
   const refreshSubscriberStats = useCallback(async () => {
     try {
@@ -205,9 +224,30 @@ const App: React.FC = () => {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   }, [lang]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('handball_dark_mode', String(isDarkMode));
+    } catch {}
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    document.documentElement.style.colorScheme = isDarkMode ? 'dark' : 'light';
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', isDarkMode ? '#020617' : '#1e3a8a');
+    }
+  }, [isDarkMode]);
+
   // Account Activation / Blocked Gate Modal
   const [showActivationGate, setShowActivationGate] = useState(false);
   const [activationGateReason, setActivationGateReason] = useState('');
+
+  // Subscribe to Global Subscriber Feature Flags in real-time when authenticated
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsubFeatures = subscribeToGlobalFeaturesConfig((cfg) => {
+      setGlobalFeatures(cfg);
+    });
+    return () => unsubFeatures();
+  }, [currentUser?.uid]);
 
   // Sync Firebase Auth on mount
   useEffect(() => {
@@ -216,17 +256,22 @@ const App: React.FC = () => {
         const profile = await fetchUserProfile(firebaseUser.uid);
         if (profile) {
           setCurrentUser(profile);
-          const active = Boolean(isCentralManagerEmail(profile.email) || (profile.isActive && !profile.isBlocked));
-          setSubscription(prev => ({
-            ...prev,
-            isPro: active,
-            planId: profile.planId || 'club_yearly',
-            licenseKey: profile.licenseKey || (active ? 'ACTIVE' : 'PENDING'),
-            clubName: profile.clubName
-          }));
+          const active = isUserEffectivelyActive(profile);
+          if (active) {
+            setSubscription(prev => ({
+              ...prev,
+              isPro: true,
+              planId: profile.planId || 'club_yearly',
+              licenseKey: profile.licenseKey || profile.activationCode || 'ACTIVE',
+              clubName: profile.clubName
+            }));
+          } else {
+            deactivateLicense();
+            setSubscription({ isPro: false });
+          }
         } else {
           const isManager = isCentralManagerEmail(firebaseUser.email);
-          const newProf = {
+          const newProf: UserProfile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             displayName: firebaseUser.displayName || (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'مشترك'),
@@ -235,25 +280,46 @@ const App: React.FC = () => {
             isBlocked: false
           };
           setCurrentUser(newProf);
-          setSubscription(prev => ({
-            ...prev,
-            isPro: isManager,
-            licenseKey: isManager ? 'ACTIVE' : 'PENDING'
-          }));
+          if (isManager) {
+            setSubscription(prev => ({ ...prev, isPro: true, licenseKey: 'ACTIVE' }));
+          } else {
+            deactivateLicense();
+            setSubscription({ isPro: false });
+          }
         }
       } else {
         setCurrentUser(null);
+        deactivateLicense();
+        setSubscription({ isPro: false });
       }
     });
     return () => unsub();
   }, []);
 
+  // Live subscription to current user's Firestore profile (activation, expiry, per-user feature overrides)
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    const unsubProfile = subscribeToUserProfile(currentUser.uid, (updatedProfile) => {
+      setCurrentUser(updatedProfile);
+      const active = isUserEffectivelyActive(updatedProfile);
+      if (active) {
+        setSubscription(prev => ({
+          ...prev,
+          isPro: true,
+          planId: updatedProfile.planId || 'club_yearly',
+          licenseKey: updatedProfile.licenseKey || updatedProfile.activationCode || 'ACTIVE',
+          clubName: updatedProfile.clubName
+        }));
+      } else {
+        deactivateLicense();
+        setSubscription({ isPro: false });
+      }
+    });
+    return () => unsubProfile();
+  }, [currentUser?.uid]);
+
   const handleUpdateSubscription = (newSub: SubscriptionState) => {
     setSubscription(newSub);
-    if (newSub.isPro && currentUser?.uid) {
-      assignUserProStatus(currentUser.uid, newSub.planId || 'club_yearly', newSub.licenseKey || 'PRO-KEY', currentUser.clubName);
-      setCurrentUser(prev => prev ? { ...prev, isPro: true, planId: newSub.planId, licenseKey: newSub.licenseKey } : null);
-    }
   };
 
   const matchRef = useRef<MatchState | null>(null);
@@ -317,8 +383,12 @@ const App: React.FC = () => {
   }, [match]);
 
   const saveScheduleToLocal = (newSchedule: ScheduledMatch[]) => {
-      setSchedule(newSchedule);
-      // Optionnel : Sauvegarder dans localStorage si besoin
+    setSchedule(newSchedule);
+    try {
+      localStorage.setItem('handball_schedule', JSON.stringify(newSchedule));
+    } catch (e) {
+      console.error('Failed to save schedule to localStorage', e);
+    }
   };
 
   const deleteFromArchive = (id: string) => {
@@ -347,10 +417,21 @@ const App: React.FC = () => {
     // It will be overwritten when they start a new match.
   };
 
-  const requireActiveAccount = (actionName: string = t.newMatch): boolean => {
+  const requireActiveAccount = (_actionName: string = t.newMatch): boolean => {
     // If not logged in, request login
     if (!currentUser) {
       setActivationGateReason(lang === 'ar' ? 'يرجى تسجيل الدخول بحسابك أولاً للاستفادة من التطبيق وإدارة المباريات.' : 'Veuillez vous connecter pour continuer.');
+      setShowActivationGate(true);
+      return false;
+    }
+
+    // If subscription has expired
+    if (isUserExpired) {
+      setActivationGateReason(
+        lang === 'ar'
+          ? 'انتهت مدة صلاحية اشتراكك السنوي. يرجى التواصل مع المسير المركزي لتجديد الاشتراك.'
+          : 'Votre abonnement annuel a expiré. Veuillez contacter le gestionnaire pour le renouveler.'
+      );
       setShowActivationGate(true);
       return false;
     }
@@ -447,62 +528,67 @@ const App: React.FC = () => {
     }
   };
 
+  const confirmBackToSetup = () => {
+    if (!match) return;
+    setShowBackToSetupConfirm(false);
+
+    // Construct data to pre-fill SetupForm from the CURRENT match state
+    const data = {
+      initialMatch: {
+        id: match.id,
+        homeTeam: match.homeTeam.name,
+        awayTeam: match.awayTeam.name,
+        category: match.details.categorie,
+        lieu: match.details.lieu,
+        date: match.details.date,
+        time: match.details.time,
+        officials: match.officials,
+      },
+      initialDetails: match.details,
+      initialHomePlayers: match.homeTeam.players.map(p => ({
+        number: p.number, name: p.name, licence: p.licence, isCaptain: p.isCaptain || false, isGoalkeeper: p.isGoalkeeper || false
+      })),
+      initialAwayPlayers: match.awayTeam.players.map(p => ({
+        number: p.number, name: p.name, licence: p.licence, isCaptain: p.isCaptain || false, isGoalkeeper: p.isGoalkeeper || false
+      })),
+      initialHomeCoach: match.homeTeam.coach.name,
+      initialAwayCoach: match.awayTeam.coach.name,
+      initialHomeAst: match.homeTeam.assistantCoach?.name || '',
+      initialAwayAst: match.awayTeam.assistantCoach?.name || '',
+      initialHomeColor: match.homeTeam.color,
+      initialAwayColor: match.awayTeam.color
+    };
+
+    setEditSetupData(data);
+    setView('setup');
+  };
+
   const handleBackToSetup = () => {
-      if (!match) return;
-      
-      const confirm = window.confirm("هل أنت متأكد من العودة للإعدادات؟\nستتمكن من تعديل أسماء اللاعبين وتفاصيل المباراة، وسيتم إعادة تشغيل العداد.");
-      if (!confirm) return;
-
-      // Construct data to pre-fill SetupForm from the CURRENT match state
-      const data = {
-          initialMatch: {
-              id: match.id,
-              homeTeam: match.homeTeam.name,
-              awayTeam: match.awayTeam.name,
-              category: match.details.categorie,
-              lieu: match.details.lieu,
-              date: match.details.date,
-              time: match.details.time,
-              officials: match.officials,
-          },
-          initialDetails: match.details,
-          initialHomePlayers: match.homeTeam.players.map(p => ({
-              number: p.number, name: p.name, licence: p.licence, isCaptain: p.isCaptain || false, isGoalkeeper: p.isGoalkeeper || false
-          })),
-          initialAwayPlayers: match.awayTeam.players.map(p => ({
-              number: p.number, name: p.name, licence: p.licence, isCaptain: p.isCaptain || false, isGoalkeeper: p.isGoalkeeper || false
-          })),
-          initialHomeCoach: match.homeTeam.coach.name,
-          initialAwayCoach: match.awayTeam.coach.name,
-          initialHomeAst: match.homeTeam.assistantCoach?.name || '',
-          initialAwayAst: match.awayTeam.assistantCoach?.name || '',
-          initialHomeColor: match.homeTeam.color,
-          initialAwayColor: match.awayTeam.color
-      };
-
-      setEditSetupData(data);
-      setView('setup');
+    if (!match) return;
+    setShowBackToSetupConfirm(true);
   };
 
   const handleCenterLogin = () => {
+    setCenterLoginError(null);
     if (pendingScheduledMatch && centerLoginPass === pendingScheduledMatch.centerPassword) {
       setPreSelectedScheduledMatch(pendingScheduledMatch);
       setShowCenterPasswordModal(false);
       setPendingScheduledMatch(null);
       setView('setup');
     } else {
-      alert("القن السري للمركز غير صحيح");
+      setCenterLoginError(lang === 'ar' ? 'القن السري للمركز غير صحيح' : 'Code secret du centre incorrect');
     }
   };
 
   const handleLogin = () => {
+    setLoginError(null);
     if (loginPass === '3lachbghitih@') {
       localStorage.setItem('admin_authenticated', 'true');
       setView('admin_schedule');
       setShowLoginModal(false);
       setLoginPass('');
     } else {
-      alert("بيانات الدخول غير صحيحة");
+      setLoginError(lang === 'ar' ? 'بيانات الدخول غير صحيحة' : 'Mot de passe incorrect');
     }
   };
 
@@ -1190,8 +1276,8 @@ const App: React.FC = () => {
   }, [match?.isActive, timeoutTimer, timerSpeed]);
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`} dir={isRtl ? 'rtl' : 'ltr'}>
-      <header className={`${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border-b p-3 sticky top-0 z-[110] flex justify-between items-center shadow-md relative`}>
+    <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'} print:bg-white print:text-black`} dir={isRtl ? 'rtl' : 'ltr'}>
+      <header className={`print:hidden ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200'} backdrop-blur-md border-b p-3 sticky top-0 z-[110] flex justify-between items-center shadow-sm relative transition-colors`}>
         {/* Menu & Language */}
         <div className="flex items-center gap-2 relative z-[120]">
           <button 
@@ -1202,11 +1288,25 @@ const App: React.FC = () => {
             <Menu size={24} className={isDarkMode ? 'text-white' : 'text-slate-900'} />
           </button>
 
+          {/* Quick Header Theme Toggle */}
+          <button
+            onClick={() => setIsDarkMode(!isDarkMode)}
+            className={`p-2 rounded-xl border transition-all shadow-sm hover:scale-105 cursor-pointer ${
+              isDarkMode
+                ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700'
+                : 'bg-slate-100 border-slate-200 text-indigo-600 hover:bg-slate-200'
+            }`}
+            title={isDarkMode ? t.light : t.dark}
+            aria-label={isDarkMode ? t.light : t.dark}
+          >
+            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+
           {/* Quick Header Language Switcher */}
           <div className="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700 text-xs font-bold shadow-inner">
             <button
               onClick={() => changeLanguage('ar')}
-              className={`px-2 py-1 rounded-lg transition-all ${lang === 'ar' ? 'bg-blue-600 text-white font-black shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'}`}
+              className={`px-2 py-1 rounded-lg transition-all ${lang === 'ar' ? 'bg-blue-600 text-white font-black shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}`}
               title="العربية"
             >
               العربية
@@ -1254,43 +1354,57 @@ const App: React.FC = () => {
                 </button>
 
                 {/* 2. مباراة جديدة / الإعداد */}
-                <button onClick={() => { setView('setup_choice'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
-                  <Plus size={18} /> {t.newMatch}
-                </button>
+                {(isCentralManager || effectiveFeatures.newMatch) && (
+                  <button onClick={() => { setView('setup_choice'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
+                    <Plus size={18} /> {t.newMatch}
+                  </button>
+                )}
 
                 {/* 3. المقابلة الحالية إذا كانت نشطة */}
                 {match && (
                   <>
-                    <button onClick={() => { setView('match'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                      <Play size={18} /> {t.resume}
-                    </button>
-                    <button onClick={() => { setView('sheet'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-green-600 dark:text-green-400">
-                      <ClipboardList size={18} /> {t.matchSheet}
-                    </button>
-                    <button onClick={() => { handleOpenAnalysis(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-indigo-600 dark:text-indigo-400">
-                      <BarChart3 size={18} /> {lang === 'ar' ? 'تحليل المقابلة والنتائج' : 'Analyse du match'}
-                    </button>
-                    <button onClick={() => { handleOpenEventsForMatch(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
-                      <div className="flex items-center gap-3">
-                        <History size={18} />
-                        <span>{lang === 'ar' ? 'سجل أحداث المقابلة (استيراد/تصدير)' : 'Journal des événements'}</span>
-                      </div>
-                      <span className="text-[10px] font-black bg-blue-600 text-white rounded-full px-2 py-0.5">
-                        {match.events?.length || 0}
-                      </span>
-                    </button>
+                    {(isCentralManager || effectiveFeatures.liveMatch) && (
+                      <button onClick={() => { setView('match'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                        <Play size={18} /> {t.resume}
+                      </button>
+                    )}
+                    {(isCentralManager || effectiveFeatures.matchSheetPdf) && (
+                      <button onClick={() => { setView('sheet'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-green-600 dark:text-green-400">
+                        <ClipboardList size={18} /> {t.matchSheet}
+                      </button>
+                    )}
+                    {(isCentralManager || effectiveFeatures.matchAnalysis) && (
+                      <button onClick={() => { handleOpenAnalysis(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-indigo-600 dark:text-indigo-400">
+                        <BarChart3 size={18} /> {lang === 'ar' ? 'تحليل المقابلة والنتائج' : 'Analyse du match'}
+                      </button>
+                    )}
+                    {(isCentralManager || effectiveFeatures.eventsLog) && (
+                      <button onClick={() => { handleOpenEventsForMatch(match); setIsMenuOpen(false); }} className="w-full text-start flex items-center justify-between p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-blue-600 dark:text-blue-400">
+                        <div className="flex items-center gap-3">
+                          <History size={18} />
+                          <span>{lang === 'ar' ? 'سجل أحداث المقابلة (استيراد/تصدير)' : 'Journal des événements'}</span>
+                        </div>
+                        <span className="text-[10px] font-black bg-blue-600 text-white rounded-full px-2 py-0.5">
+                          {match.events?.length || 0}
+                        </span>
+                      </button>
+                    )}
                   </>
                 )}
 
                 {/* 4. أرشيف المباريات */}
-                <button onClick={() => { setView('archive'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
-                  <History size={18} /> {t.archive}
-                </button>
+                {(isCentralManager || effectiveFeatures.archive) && (
+                  <button onClick={() => { setView('archive'); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
+                    <History size={18} /> {t.archive}
+                  </button>
+                )}
 
                 {/* 5. جدول المقابلات */}
-                <button onClick={() => { handleSettingsClick(); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
-                  <SettingsIcon size={18} /> {t.scheduleManager}
-                </button>
+                {(isCentralManager || effectiveFeatures.scheduleManager) && (
+                  <button onClick={() => { handleSettingsClick(); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
+                    <SettingsIcon size={18} /> {t.scheduleManager}
+                  </button>
+                )}
 
                 <div className="h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
@@ -1301,29 +1415,43 @@ const App: React.FC = () => {
 
                 {/* 7. لوحة المسير المركزي (إذا كان مسيراً مركزياً) */}
                 {isCentralManager && (
-                  <button 
-                    onClick={() => { 
-                      setSubscriptionModalTab('manager'); 
-                      setShowSubscriptionModal(true); 
-                      setIsMenuOpen(false); 
-                    }} 
-                    className="w-full text-start flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 transition-all font-black text-sm text-slate-900 dark:text-white border border-amber-500/40 shadow-sm"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
-                        <Crown size={16} />
-                      </div>
-                      <div>
-                        <div className="font-black text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                          <span>لوحة تسيير المنخرطين</span>
-                          <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black">المسير</span>
+                  <div className="space-y-1">
+                    <button 
+                      onClick={() => { 
+                        setSubscriptionModalTab('manager'); 
+                        setShowSubscriptionModal(true); 
+                        setIsMenuOpen(false); 
+                      }} 
+                      className="w-full text-start flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-teal-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 transition-all font-black text-sm text-slate-900 dark:text-white border border-amber-500/40 shadow-sm"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
+                          <Crown size={16} />
                         </div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
-                          تفعيل وغلق الحسابات والمشتركين
+                        <div>
+                          <div className="font-black text-xs sm:text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                            <span>لوحة تسيير المنخرطين</span>
+                            <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-black">المسير</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">
+                            تفعيل وغلق الحسابات والمشتركين
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+
+                    <button 
+                      onClick={() => { 
+                        setSubscriptionModalTab('features'); 
+                        setShowSubscriptionModal(true); 
+                        setIsMenuOpen(false); 
+                      }} 
+                      className="w-full text-start flex items-center gap-2.5 p-2.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 transition-all font-black text-xs text-indigo-700 dark:text-indigo-300 border border-indigo-500/30"
+                    >
+                      <Sliders size={16} className="shrink-0" />
+                      <span>{lang === 'ar' ? 'تحكم في ميزات المشتركين' : 'Contrôle des Fonctionnalités'}</span>
+                    </button>
+                  </div>
                 )}
 
                 {/* 8. تفعيل الحساب إذا لم يكن مفعلاً */}
@@ -1336,7 +1464,7 @@ const App: React.FC = () => {
                 <div className="h-px bg-slate-200 dark:bg-slate-800 my-1" />
 
                 {/* 9. إعدادات المظهر واللغة */}
-                {!isAccountActive && (
+                {(isAccountActive || isCentralManager) && (
                   <button onClick={() => { setTimerSpeed(prev => prev === 1 ? 10 : 1); setIsMenuOpen(false); }} className="w-full text-start flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm text-slate-900 dark:text-slate-100">
                     <Zap size={18} className={timerSpeed > 1 ? 'text-amber-500' : ''} /> {t.scoreboardSpeed}: {timerSpeed}x
                   </button>
@@ -1398,10 +1526,9 @@ const App: React.FC = () => {
           )}
 
           <img 
-            src="https://images.weserv.nl/?url=https://tibuafrica.org/wp-content/uploads/2023/07/FRMSS.png&w=100&output=png" 
-            alt="FRMSS" 
-            className="h-8 sm:h-9 w-auto object-contain" 
-            crossOrigin="anonymous"
+            src="/icon.svg" 
+            alt="HandManager Pro" 
+            className="h-8 sm:h-9 w-auto object-contain rounded-lg" 
           />
         </div>
       </header>
@@ -1421,11 +1548,20 @@ const App: React.FC = () => {
               isPro={isAccountActive}
               isCentralManager={isCentralManager}
               subscriberStats={subscriberStats}
+              effectiveFeatures={effectiveFeatures}
               onNavigate={setView}
+              onSelectMatch={(selectedMatch) => {
+                setMatch(selectedMatch);
+                setView('match');
+              }}
               onNewMatch={() => setView('setup_choice')}
               onOpenAuth={() => setShowAuthModal(true)}
               onOpenSubscription={() => {
-                setSubscriptionModalTab('activate');
+                setSubscriptionModalTab(isCentralManager ? 'manager' : 'activate');
+                setShowSubscriptionModal(true);
+              }}
+              onOpenFeatureControls={() => {
+                setSubscriptionModalTab('features');
                 setShowSubscriptionModal(true);
               }}
               onOpenEvents={() => handleOpenEventsForMatch(match)}
@@ -1454,14 +1590,17 @@ const App: React.FC = () => {
               isPro={isAccountActive}
               isCentralManager={isCentralManager}
               subscriberStats={subscriberStats}
+              effectiveFeatures={effectiveFeatures}
               isDarkMode={isDarkMode} 
               lang={lang}
             />
           </div>
         )}
 
-        {view === 'setup' && <div className="p-4 max-w-lg mx-auto w-full overflow-y-auto h-full">
-            <SetupForm 
+        {view === 'setup' && (
+          (isCentralManager || effectiveFeatures.newMatch) ? (
+            <div className="p-4 max-w-lg mx-auto w-full overflow-y-auto h-full">
+              <SetupForm 
                 key={editSetupData ? 'edit' : 'new'} 
                 onStart={startMatch} 
                 isDarkMode={isDarkMode} 
@@ -1477,72 +1616,139 @@ const App: React.FC = () => {
                 initialHomeColor={editSetupData?.initialHomeColor}
                 initialAwayColor={editSetupData?.initialAwayColor}
                 lang={lang}
-            />
-        </div>}
-        {view === 'admin_schedule' && <div className="p-4 max-w-4xl mx-auto w-full h-full overflow-hidden"><ScheduleManager schedule={schedule} onSave={saveScheduleToLocal} onClose={() => setView('setup_choice')} isDarkMode={isDarkMode} /></div>}
-        {view === 'match' && match && <div className="flex flex-col h-full relative overflow-hidden">
-            <div className={`flex-shrink-0 z-[100] border-b shadow-xl ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200'} backdrop-blur-md`}>
-              <div className="p-2 max-w-7xl mx-auto flex flex-col gap-2">
-                <ScoreBoard 
-                    match={match} 
-                    onToggleTimer={() => setMatch(m => m ? {...m, isActive: !m.isActive} : null)} 
-                    onTimeout={handleTimeout} 
-                    onCancelTimeout={handleCancelTimeout} 
-                    onFinishMatch={handleFinishMatch} 
-                    onPeriodChange={onPeriodChangeRequest}
-                    timeoutTimer={timeoutTimer} 
-                    breakTimer={null} 
-                    isDarkMode={isDarkMode} 
-                    lang={lang}
-                    selectedTarget={selectedTarget}
-                    onScoreGoal={handleScoreBoardGoal}
-                    onOpenEvents={() => handleOpenEventsForMatch(match)}
-                />
-                {matchToast && (
-                  <div className={`py-1.5 px-3 rounded-xl text-center text-xs font-black shadow-md transition-all animate-in fade-in slide-in-from-top-1 border ${
-                    matchToast.type === 'success' 
-                      ? 'bg-emerald-600 text-white border-emerald-500' 
-                      : matchToast.type === 'warning'
-                      ? 'bg-amber-400 text-slate-950 border-amber-500'
-                      : 'bg-blue-600 text-white border-blue-500'
-                  }`}>
-                    {matchToast.message}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className={`max-w-md w-full p-8 rounded-3xl border-2 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <Lock size={36} className="mx-auto text-amber-500 mb-3" />
+                <h3 className="text-lg font-black mb-2">{lang === 'ar' ? 'الميزة غير مفعلة لحسابك' : 'Fonctionnalité désactivée'}</h3>
+                <p className="text-xs font-bold text-slate-500 mb-5">{lang === 'ar' ? 'قام المسير المركزي بتعطيل هذه الميزة مؤقتاً.' : 'Cette fonctionnalité est désactivée par le Gérant Central.'}</p>
+                <button onClick={() => setView('home')} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black cursor-pointer">{lang === 'ar' ? 'العودة للرئيسية' : 'Retour à l\'accueil'}</button>
+              </div>
+            </div>
+          )
+        )}
+
+        {view === 'admin_schedule' && (
+          (isCentralManager || effectiveFeatures.scheduleManager) ? (
+            <div className="p-4 max-w-4xl mx-auto w-full h-full overflow-hidden"><ScheduleManager schedule={schedule} onSave={saveScheduleToLocal} onClose={() => setView('setup_choice')} isDarkMode={isDarkMode} /></div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className={`max-w-md w-full p-8 rounded-3xl border-2 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <Lock size={36} className="mx-auto text-amber-500 mb-3" />
+                <h3 className="text-lg font-black mb-2">{lang === 'ar' ? 'الميزة غير مفعلة لحسابك' : 'Fonctionnalité désactivée'}</h3>
+                <p className="text-xs font-bold text-slate-500 mb-5">{lang === 'ar' ? 'برمجة وإدارة المقابلات غير مفعلة حالياً لحسابك.' : 'La gestion du planning est désactivée.'}</p>
+                <button onClick={() => setView('home')} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black cursor-pointer">{lang === 'ar' ? 'العودة للرئيسية' : 'Retour à l\'accueil'}</button>
+              </div>
+            </div>
+          )
+        )}
+
+        {view === 'match' && match && (
+          (isCentralManager || effectiveFeatures.liveMatch) ? (
+            <div className="flex flex-col h-full relative overflow-hidden">
+              <div className={`flex-shrink-0 z-[100] border-b shadow-xl ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200'} backdrop-blur-md`}>
+                <div className="p-2 max-w-7xl mx-auto flex flex-col gap-2">
+                  <ScoreBoard 
+                      match={match} 
+                      onToggleTimer={() => setMatch(m => m ? {...m, isActive: !m.isActive} : null)} 
+                      onTimeout={handleTimeout} 
+                      onCancelTimeout={handleCancelTimeout} 
+                      onFinishMatch={handleFinishMatch} 
+                      onPeriodChange={onPeriodChangeRequest}
+                      timeoutTimer={timeoutTimer} 
+                      breakTimer={null} 
+                      isDarkMode={isDarkMode} 
+                      lang={lang}
+                      selectedTarget={selectedTarget}
+                      onScoreGoal={handleScoreBoardGoal}
+                      onOpenEvents={(isCentralManager || effectiveFeatures.eventsLog) ? () => handleOpenEventsForMatch(match) : undefined}
+                  />
+                  {matchToast && (
+                    <div className={`py-1.5 px-3 rounded-xl text-center text-xs font-black shadow-md transition-all animate-in fade-in slide-in-from-top-1 border ${
+                      matchToast.type === 'success' 
+                        ? 'bg-emerald-600 text-white border-emerald-500' 
+                        : matchToast.type === 'warning'
+                        ? 'bg-amber-400 text-slate-950 border-amber-500'
+                        : 'bg-blue-600 text-white border-blue-500'
+                    }`}>
+                      {matchToast.message}
+                    </div>
+                  )}
+                  {match.period !== MatchPeriod.PENALTIES && (
+                     <ActionPanel 
+                         match={match} 
+                         selectedTarget={selectedTarget} 
+                         onAction={handleAction} 
+                         onUndo={() => {}} 
+                         hasHistory={history.length > 0} 
+                         isDarkMode={isDarkMode} 
+                         matchActive={match.isActive} 
+                         isTimeoutActive={timeoutTimer !== null} 
+                         playerSuspended={false} 
+                         suspensionDuration={match.config.suspensionDuration}
+                         lang={lang}
+                     />
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 overflow-hidden p-2 sm:p-4 relative">
+                {match.period === MatchPeriod.PENALTIES ? (
+                  <PenaltyShootout match={match} onShot={handlePenaltyShot} isDarkMode={isDarkMode} />
+                ) : (
+                  <div className={`w-full grid grid-cols-2 gap-2 sm:gap-4 h-full`}>
+                      {/* SWAPPED ORDER FOR VISUAL ALIGNMENT WITH SCOREBOARD IN RTL */}
+                      <TeamControl team={match.homeTeam} side="home" selectedTarget={selectedTarget} onSelect={setSelectedTarget} isDarkMode={isDarkMode} onUpdatePlayer={handleUpdatePlayer} onDeletePlayer={handleDeletePlayer} onAddPlayer={handleAddPlayer} onUpdateStaff={handleUpdateStaff} onUndoGoal={handleUndoGoal} lang={lang} />
+                      <TeamControl team={match.awayTeam} side="away" selectedTarget={selectedTarget} onSelect={setSelectedTarget} isDarkMode={isDarkMode} onUpdatePlayer={handleUpdatePlayer} onDeletePlayer={handleDeletePlayer} onAddPlayer={handleAddPlayer} onUpdateStaff={handleUpdateStaff} onUndoGoal={handleUndoGoal} lang={lang} />
                   </div>
-                )}
-                {match.period !== MatchPeriod.PENALTIES && (
-                   <ActionPanel 
-                       match={match} 
-                       selectedTarget={selectedTarget} 
-                       onAction={handleAction} 
-                       onUndo={() => {}} 
-                       hasHistory={history.length > 0} 
-                       isDarkMode={isDarkMode} 
-                       matchActive={match.isActive} 
-                       isTimeoutActive={timeoutTimer !== null} 
-                       playerSuspended={false} 
-                       suspensionDuration={match.config.suspensionDuration}
-                       lang={lang}
-                   />
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-hidden p-2 sm:p-4 relative">
-              {match.period === MatchPeriod.PENALTIES ? (
-                <PenaltyShootout match={match} onShot={handlePenaltyShot} isDarkMode={isDarkMode} />
-              ) : (
-                <div className={`w-full grid grid-cols-2 gap-2 sm:gap-4 h-full`}>
-                    {/* SWAPPED ORDER FOR VISUAL ALIGNMENT WITH SCOREBOARD IN RTL */}
-                    <TeamControl team={match.homeTeam} side="home" selectedTarget={selectedTarget} onSelect={setSelectedTarget} isDarkMode={isDarkMode} onUpdatePlayer={handleUpdatePlayer} onDeletePlayer={handleDeletePlayer} onAddPlayer={handleAddPlayer} onUpdateStaff={handleUpdateStaff} onUndoGoal={handleUndoGoal} lang={lang} />
-                    <TeamControl team={match.awayTeam} side="away" selectedTarget={selectedTarget} onSelect={setSelectedTarget} isDarkMode={isDarkMode} onUpdatePlayer={handleUpdatePlayer} onDeletePlayer={handleDeletePlayer} onAddPlayer={handleAddPlayer} onUpdateStaff={handleUpdateStaff} onUndoGoal={handleUndoGoal} lang={lang} />
-                </div>
-              )}
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className={`max-w-md w-full p-8 rounded-3xl border-2 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <Lock size={36} className="mx-auto text-amber-500 mb-3" />
+                <h3 className="text-lg font-black mb-2">{lang === 'ar' ? 'الميزة غير مفعلة لحسابك' : 'Fonctionnalité désactivée'}</h3>
+                <p className="text-xs font-bold text-slate-500 mb-5">{lang === 'ar' ? 'لوحة تحكيم المباراة المباشرة غير مفعلة حالياً لحسابك.' : 'Le tableau de match en direct est désactivé.'}</p>
+                <button onClick={() => setView('home')} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black cursor-pointer">{lang === 'ar' ? 'العودة للرئيسية' : 'Retour à l\'accueil'}</button>
+              </div>
             </div>
-          </div>}
-        {view === 'sheet' && match && <div className="p-4 h-full overflow-y-auto"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} isAccountActive={isAccountActive} onOpenEvents={() => handleOpenEventsForMatch(match)} /></div>}
-        {view === 'archive' && <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} onOpenEvents={(m) => handleOpenEventsForMatch(m)} onOpenAnalysis={(m) => handleOpenAnalysis(m)} lang={lang} /></div>}
+          )
+        )}
+
+        {view === 'sheet' && match && (
+          (isCentralManager || effectiveFeatures.matchSheetPdf) ? (
+            <div className="p-2 sm:p-4 print:p-0 h-full overflow-y-auto print:overflow-visible"><MatchSheet match={match} onUpdate={setMatch} lang={lang} onLanguageChange={changeLanguage} isAccountActive={isAccountActive} effectiveFeatures={effectiveFeatures} isDarkMode={isDarkMode} onOpenEvents={(isCentralManager || effectiveFeatures.eventsLog) ? () => handleOpenEventsForMatch(match) : undefined} /></div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className={`max-w-md w-full p-8 rounded-3xl border-2 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <Lock size={36} className="mx-auto text-amber-500 mb-3" />
+                <h3 className="text-lg font-black mb-2">{lang === 'ar' ? 'الميزة غير مفعلة لحسابك' : 'Fonctionnalité désactivée'}</h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-5">{lang === 'ar' ? 'ورقة التحكيم الرسمية غير مفعلة حالياً لحسابك.' : 'La feuille de match est désactivée par le gestionnaire.'}</p>
+                <button onClick={() => setView('home')} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black cursor-pointer">{lang === 'ar' ? 'العودة للرئيسية' : 'Retour à l\'accueil'}</button>
+              </div>
+            </div>
+          )
+        )}
+
+        {view === 'archive' && (
+          (isCentralManager || effectiveFeatures.archive) ? (
+            <div className="p-4 h-full overflow-y-auto"><ArchiveList matches={archive} isDarkMode={isDarkMode} effectiveFeatures={effectiveFeatures} onSelect={(m) => { setMatch(m); setView('match'); }} onDelete={deleteFromArchive} onOpenEvents={(m) => handleOpenEventsForMatch(m)} onOpenAnalysis={(m) => handleOpenAnalysis(m)} lang={lang} /></div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <div className={`max-w-md w-full p-8 rounded-3xl border-2 text-center shadow-xl ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <Lock size={36} className="mx-auto text-amber-500 mb-3" />
+                <h3 className="text-lg font-black mb-2">{lang === 'ar' ? 'الميزة غير مفعلة لحسابك' : 'Fonctionnalité désactivée'}</h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-5">{lang === 'ar' ? 'أرشيف المباريات غير مفعل حالياً لحسابك.' : 'Les archives sont désactivées par le gestionnaire.'}</p>
+                <button onClick={() => setView('home')} className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black cursor-pointer">{lang === 'ar' ? 'العودة للرئيسية' : 'Retour à l\'accueil'}</button>
+              </div>
+            </div>
+          )
+        )}
         
         {/* Footer Credit */}
-        <div className={`py-2 text-center text-[10px] font-bold ${isDarkMode ? 'bg-slate-900 text-slate-500 border-t border-slate-800' : 'bg-white text-slate-600 border-t border-slate-200'}`}>
+        <div className={`print:hidden py-2 text-center text-[10px] font-bold ${isDarkMode ? 'bg-slate-900 text-slate-400 border-t border-slate-800' : 'bg-white text-slate-600 border-t border-slate-200'}`}>
            {t.credits}
         </div>
       </main>
@@ -1603,14 +1809,15 @@ const App: React.FC = () => {
       {showLoginModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
           <div className={`w-full max-w-sm rounded-[2.5rem] border-2 shadow-2xl p-8 relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-            <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 p-2 hover:bg-slate-500/10 rounded-full text-slate-500"><X size={20} /></button>
+            <button onClick={() => { setShowLoginModal(false); setLoginError(null); }} className="absolute top-4 right-4 p-2 hover:bg-slate-500/10 rounded-full text-slate-500"><X size={20} /></button>
             <div className="flex flex-col items-center mb-6">
                <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white mb-4 shadow-lg shadow-blue-600/30"><Lock size={32} /></div>
                <h3 className="text-xl font-black">الدخول للإعدادات</h3>
                <p className={`text-xs font-bold mt-1 text-center ${isDarkMode ? 'text-slate-500' : 'text-slate-700'}`}>يرجى إدخال القن السري للمتابعة</p>
             </div>
             <div className="space-y-4">
-               <div><label className={`text-[10px] font-black uppercase mb-1 block ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>القن السري</label><input type="password" autoFocus value={loginPass} onChange={e => setLoginPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} className={`w-full p-3 rounded-xl border-2 font-bold outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} placeholder="••••••••" /></div>
+               <div><label className={`text-[10px] font-black uppercase mb-1 block ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>القن السري</label><input type="password" autoFocus value={loginPass} onChange={e => { setLoginPass(e.target.value); setLoginError(null); }} onKeyDown={e => e.key === 'Enter' && handleLogin()} className={`w-full p-3 rounded-xl border-2 font-bold outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} placeholder="••••••••" /></div>
+               {loginError && <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-500 text-xs font-black text-center">{loginError}</div>}
                <button onClick={handleLogin} className="w-full py-3 bg-blue-600 text-white font-black rounded-xl shadow-lg shadow-blue-600/20 hover:bg-blue-500 transition-colors mt-2">دخول</button>
             </div>
           </div>
@@ -1621,7 +1828,7 @@ const App: React.FC = () => {
       {showCenterPasswordModal && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
           <div className={`w-full max-w-sm rounded-[2.5rem] border-2 shadow-2xl p-8 relative ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-            <button onClick={() => { setShowCenterPasswordModal(false); setPendingScheduledMatch(null); }} className="absolute top-4 right-4 p-2 hover:bg-slate-500/10 rounded-full text-slate-500"><X size={20} /></button>
+            <button onClick={() => { setShowCenterPasswordModal(false); setPendingScheduledMatch(null); setCenterLoginError(null); }} className="absolute top-4 right-4 p-2 hover:bg-slate-500/10 rounded-full text-slate-500"><X size={20} /></button>
             <div className="flex flex-col items-center mb-6">
                <div className="w-16 h-16 bg-amber-600 rounded-full flex items-center justify-center text-white mb-4 shadow-lg shadow-amber-600/30"><Lock size={32} /></div>
                <h3 className="text-xl font-black">تحقق من المركز</h3>
@@ -1629,8 +1836,31 @@ const App: React.FC = () => {
                <p className="text-[10px] text-amber-500 font-bold mt-1">يرجى إدخال القن السري للمركز للمتابعة</p>
             </div>
             <div className="space-y-4">
-               <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1 block">القن السري للمركز</label><input type="password" autoFocus value={centerLoginPass} onChange={e => setCenterLoginPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCenterLogin()} className={`w-full p-3 rounded-xl border-2 font-bold outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} placeholder="••••••••" /></div>
+               <div><label className="text-[10px] font-black text-slate-500 uppercase mb-1 block">القن السري للمركز</label><input type="password" autoFocus value={centerLoginPass} onChange={e => { setCenterLoginPass(e.target.value); setCenterLoginError(null); }} onKeyDown={e => e.key === 'Enter' && handleCenterLogin()} className={`w-full p-3 rounded-xl border-2 font-bold outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} placeholder="••••••••" /></div>
+               {centerLoginError && <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-500 text-xs font-black text-center">{centerLoginError}</div>}
                <button onClick={handleCenterLogin} className="w-full py-3 bg-amber-600 text-white font-black rounded-xl shadow-lg shadow-amber-600/20 hover:bg-amber-500 transition-colors mt-2">تأكيد الدخول</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Back to Setup Confirmation Modal */}
+      {showBackToSetupConfirm && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
+          <div className={`w-full max-w-sm rounded-3xl p-6 border-2 shadow-2xl text-center ${isDarkMode ? 'bg-slate-900 border-amber-500/40 text-white' : 'bg-white border-amber-200 text-slate-900'}`}>
+            <h4 className="text-base font-black mb-2">{lang === 'ar' ? 'العودة لإعدادات المباراة؟' : 'Retourner à la configuration ?'}</h4>
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+              {lang === 'ar'
+                ? 'ستتمكن من تعديل أسماء اللاعبين وتفاصيل المباراة، وسيتم إعادة تشغيل العداد.'
+                : 'Vous pourrez modifier les joueurs et les détails du match, et le chrono sera réinitialisé.'}
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={confirmBackToSetup} className="py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs cursor-pointer">
+                {lang === 'ar' ? 'تأكيد' : 'Confirmer'}
+              </button>
+              <button type="button" onClick={() => setShowBackToSetupConfirm(false)} className={`py-2.5 rounded-xl font-black text-xs border cursor-pointer ${isDarkMode ? 'border-slate-700 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+                {lang === 'ar' ? 'إلغاء' : 'Annuler'}
+              </button>
             </div>
           </div>
         </div>
@@ -1679,14 +1909,19 @@ const App: React.FC = () => {
         onUpdateCurrentUser={(profile) => {
           setCurrentUser(profile);
           refreshSubscriberStats();
-          if (profile?.isActive) {
+          if (isUserEffectivelyActive(profile)) {
             setSubscription(prev => ({
               ...prev,
               isPro: true,
-              licenseKey: profile.activationCode || 'ACTIVE'
+              licenseKey: profile?.activationCode || 'ACTIVE'
             }));
+          } else {
+            deactivateLicense();
+            setSubscription({ isPro: false });
           }
         }}
+        globalFeatures={globalFeatures}
+        onUpdateGlobalFeatures={(features) => setGlobalFeatures(features)}
         isDarkMode={isDarkMode} 
         lang={lang}
         initialTab={subscriptionModalTab}
@@ -1700,13 +1935,16 @@ const App: React.FC = () => {
         initialMode={authModalInitialMode}
         onAuthSuccess={(profile) => {
           setCurrentUser(profile);
-          if (profile?.isActive) {
+          if (isUserEffectivelyActive(profile)) {
             setSubscription(prev => ({
               ...prev,
               isPro: true,
-              licenseKey: profile.activationCode || 'ACTIVE',
-              clubName: profile.clubName
+              licenseKey: profile?.activationCode || 'ACTIVE',
+              clubName: profile?.clubName
             }));
+          } else {
+            deactivateLicense();
+            setSubscription({ isPro: false });
           }
         }}
         onOpenCentralManager={() => {
@@ -1767,7 +2005,13 @@ const App: React.FC = () => {
 رقم الهاتف: ${currentUser.phone || ''}
 المؤسسة: ${currentUser.clubName || ''}
 لقد سجلت في تطبيق HandballScore Pro، وأطلب منكم التفضل بتفعيل حسابي للاستفادة من مميزات التطبيق. شكراً لكم!`);
-                    window.open(`https://wa.me/?text=${text}`, '_blank');
+                    const link = document.createElement('a');
+                    link.href = `https://wa.me/?text=${text}`;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
                   }}
                   className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.02]"
                 >
@@ -1827,6 +2071,7 @@ const App: React.FC = () => {
           isDarkMode={isDarkMode}
           lang={lang}
           initialTab={eventsModalInitialTab}
+          effectiveFeatures={effectiveFeatures}
         />
       )}
 

@@ -111,6 +111,8 @@ export const TeamControl: React.FC<TeamControlProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newNumber, setNewNumber] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const isCoachSelected = selectedTarget?.type === 'coach' && selectedTarget.team === side;
   const isAssistantSelected = selectedTarget?.type === 'assistant-coach' && selectedTarget.team === side;
@@ -155,6 +157,7 @@ export const TeamControl: React.FC<TeamControlProps> = ({
   };
 
   const handleDoubleClickPlayer = (p: Player) => {
+    setEditError(null);
     setEditingPlayer(p);
     setEditName(p.name);
     setEditNumber(p.number);
@@ -165,17 +168,19 @@ export const TeamControl: React.FC<TeamControlProps> = ({
   };
 
   const handleDoubleClickStaff = (type: 'coach' | 'assistant-coach') => {
-      setEditingStaff(type);
-      setEditName(type === 'coach' ? team.coach.name : (team.assistantCoach?.name || ''));
+    setEditError(null);
+    setEditingStaff(type);
+    setEditName(type === 'coach' ? team.coach.name : (team.assistantCoach?.name || ''));
   };
 
   const saveEdit = () => {
+    setEditError(null);
     if (editingPlayer) {
       // Check for duplicate number (excluding current player)
       const duplicate = team.players.some(p => p.number === editNumber && p.id !== editingPlayer.id);
       if (duplicate) {
-          alert(`الرقم ${editNumber} موجود بالفعل في هذا الفريق.`);
-          return;
+        setEditError(lang === 'ar' ? `الرقم ${editNumber} موجود بالفعل في هذا الفريق.` : `Le numéro ${editNumber} existe déjà dans cette équipe.`);
+        return;
       }
 
       onUpdatePlayer(side, editingPlayer.id, { 
@@ -187,18 +192,19 @@ export const TeamControl: React.FC<TeamControlProps> = ({
       });
       setEditingPlayer(null);
     } else if (editingStaff && onUpdateStaff) {
-        onUpdateStaff(side, editingStaff, editName);
-        setEditingStaff(null);
+      onUpdateStaff(side, editingStaff, editName);
+      setEditingStaff(null);
     }
   };
 
   const handleAddSubmit = () => {
+    setAddError(null);
     if (newNumber.trim() && newName.trim()) {
       // Check for duplicate number
       const duplicate = team.players.some(p => p.number === newNumber);
       if (duplicate) {
-          alert(`الرقم ${newNumber} موجود بالفعل في هذا الفريق.`);
-          return;
+        setAddError(lang === 'ar' ? `الرقم ${newNumber} موجود بالفعل في هذا الفريق.` : `Le numéro ${newNumber} existe déjà dans cette équipe.`);
+        return;
       }
 
       onAddPlayer(side, newNumber, newName);
@@ -212,6 +218,7 @@ export const TeamControl: React.FC<TeamControlProps> = ({
     setEditingPlayer(null);
     setEditingStaff(null);
     setShowDeleteConfirm(false);
+    setEditError(null);
   };
 
   return (
@@ -222,7 +229,7 @@ export const TeamControl: React.FC<TeamControlProps> = ({
           <h3 className="font-black text-xs sm:text-base uppercase tracking-tight truncate max-w-[90px] sm:max-w-none">{team.name || 'فريق'}</h3>
         </div>
         <button 
-          onClick={(e) => { e.stopPropagation(); setShowAddModal(true); }}
+          onClick={(e) => { e.stopPropagation(); setAddError(null); setShowAddModal(true); }}
           className={`p-1 sm:p-1.5 rounded-lg transition-all hover:scale-110 active:scale-95 ${isDarkMode ? 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30' : 'bg-blue-100 text-blue-600 hover:bg-blue-200'}`}
           title="إضافة لاعب جديد"
         >
@@ -265,7 +272,7 @@ export const TeamControl: React.FC<TeamControlProps> = ({
                 `}
               >
                 <span className="text-base sm:text-2xl font-black leading-none">{p.number}</span>
-                <span className={`text-[7.5px] sm:text-[9px] font-bold truncate w-full px-0.5 text-center mt-0.5 ${isSelected ? 'text-blue-100' : isEndingSoon ? 'text-amber-600 dark:text-amber-300' : (isDarkMode ? 'text-slate-500' : 'text-black')}`}>{p.name}</span>
+                <span className={`text-[7.5px] sm:text-[9px] font-bold truncate w-full px-0.5 text-center mt-0.5 ${isSelected ? 'text-blue-100' : isEndingSoon ? (isDarkMode ? 'text-amber-300' : 'text-amber-700') : (isDarkMode ? 'text-slate-400' : 'text-slate-800')}`}>{p.name}</span>
                 
                 {/* Role Indicators */}
                 <div className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 flex flex-col gap-0.5">
@@ -307,13 +314,13 @@ export const TeamControl: React.FC<TeamControlProps> = ({
         </div>
       </div>
 
-      <div className="mt-0.5 pt-1.5 border-t space-y-1.5 flex-shrink-0">
+      <div className={`mt-0.5 pt-1.5 border-t space-y-1.5 flex-shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
           <button 
             onClick={() => onSelect({ type: 'coach', team: side })}
             onDoubleClick={() => handleDoubleClickStaff('coach')}
-            className={`flex w-full items-center justify-between p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all ${isCoachSelected ? 'bg-blue-600/10 border-blue-500' : isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}
+            className={`flex w-full items-center justify-between p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all ${isCoachSelected ? 'bg-blue-600/10 border-blue-500' : isDarkMode ? 'border-slate-800 hover:bg-slate-800/40' : 'border-slate-200 hover:bg-slate-50'}`}
           >
-            <div className={`text-[8px] sm:text-[10px] font-black uppercase truncate max-w-[110px] sm:max-w-none ${isCoachSelected ? 'text-blue-500' : (isDarkMode ? 'text-slate-500' : 'text-black')}`}>{tTeam.coach}: {team.coach?.name || '---'}</div>
+            <div className={`text-[8px] sm:text-[10px] font-black uppercase truncate max-w-[110px] sm:max-w-none ${isCoachSelected ? 'text-blue-500' : (isDarkMode ? 'text-slate-300' : 'text-slate-800')}`}>{tTeam.coach}: {team.coach?.name || '---'}</div>
             <div className="flex gap-1 flex-shrink-0">
               {team.coach?.sanctions?.map((s, i) => (
                 <div key={i} className={`w-2 h-3.5 sm:w-3 sm:h-5 rounded-sm shadow-sm ${s.type === SanctionType.YELLOW ? 'bg-yellow-400' : s.type === SanctionType.RED ? 'bg-red-600' : s.type === SanctionType.BLUE ? 'bg-blue-600' : 'bg-slate-900 flex items-center justify-center text-[7px] text-white font-black'}`}>
@@ -326,9 +333,9 @@ export const TeamControl: React.FC<TeamControlProps> = ({
             <button 
                 onClick={() => onSelect({ type: 'assistant-coach', team: side })}
                 onDoubleClick={() => handleDoubleClickStaff('assistant-coach')}
-                className={`flex w-full items-center justify-between p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all ${isAssistantSelected ? 'bg-blue-600/10 border-blue-500' : isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}
+                className={`flex w-full items-center justify-between p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all ${isAssistantSelected ? 'bg-blue-600/10 border-blue-500' : isDarkMode ? 'border-slate-800 hover:bg-slate-800/40' : 'border-slate-200 hover:bg-slate-50'}`}
             >
-                <div className={`text-[8px] sm:text-[10px] font-black uppercase truncate max-w-[110px] sm:max-w-none ${isAssistantSelected ? 'text-blue-500' : (isDarkMode ? 'text-slate-500' : 'text-black')}`}>{tTeam.asstCoach}: {team.assistantCoach.name}</div>
+                <div className={`text-[8px] sm:text-[10px] font-black uppercase truncate max-w-[110px] sm:max-w-none ${isAssistantSelected ? 'text-blue-500' : (isDarkMode ? 'text-slate-300' : 'text-slate-800')}`}>{tTeam.asstCoach}: {team.assistantCoach.name}</div>
                 <div className="flex gap-1 flex-shrink-0">
                 {team.assistantCoach.sanctions?.map((s, i) => (
                     <div key={i} className={`w-2 h-3.5 sm:w-3 sm:h-5 rounded-sm shadow-sm ${s.type === SanctionType.YELLOW ? 'bg-yellow-400' : s.type === SanctionType.RED ? 'bg-red-600' : s.type === SanctionType.BLUE ? 'bg-blue-600' : 'bg-slate-900 flex items-center justify-center text-[7px] text-white font-black'}`}>
@@ -365,17 +372,17 @@ export const TeamControl: React.FC<TeamControlProps> = ({
                   {editingPlayer && (
                     <div className="flex gap-2">
                         <div className="w-1/3">
-                            <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>{tTeam.number}</label>
+                            <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>{tTeam.number}</label>
                             <input type="tel" pattern="[0-9]*" value={editNumber} onChange={(e) => setEditNumber(e.target.value)} className={`w-full p-3 rounded-xl border-2 font-black outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-blue-400' : 'bg-slate-50 border-slate-200 text-blue-600'}`} />
                         </div>
                         <div className="flex-1">
-                            <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>{tTeam.licence}</label>
-                            <input type="text" value={editLicence} onChange={(e) => setEditLicence(e.target.value)} className={`w-full p-3 rounded-xl border-2 font-black outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-amber-400' : 'bg-slate-50 border-slate-200 text-amber-500'}`} />
+                            <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>{tTeam.licence}</label>
+                            <input type="text" value={editLicence} onChange={(e) => setEditLicence(e.target.value)} className={`w-full p-3 rounded-xl border-2 font-black outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-amber-400' : 'bg-slate-50 border-slate-200 text-amber-600'}`} />
                         </div>
                     </div>
                   )}
                   <div>
-                    <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>{tTeam.name}</label>
+                    <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>{tTeam.name}</label>
                     <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className={`w-full p-3 rounded-xl border-2 font-black outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} />
                   </div>
                   
@@ -398,6 +405,11 @@ export const TeamControl: React.FC<TeamControlProps> = ({
                               <input type="checkbox" checked={editIsGoalkeeper} onChange={e => setEditIsGoalkeeper(e.target.checked)} className="accent-blue-500 w-4 h-4" />
                           </label>
                       </div>
+                  )}
+                  {editError && (
+                    <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-500 dark:text-rose-300 text-xs font-black">
+                      {editError}
+                    </div>
                   )}
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-8">
@@ -426,7 +438,7 @@ export const TeamControl: React.FC<TeamControlProps> = ({
             
             <div className="space-y-4">
               <div>
-                <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>{tTeam.number}</label>
+                <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>{tTeam.number}</label>
                 <input 
                   type="tel" 
                   pattern="[0-9]*"
@@ -438,7 +450,7 @@ export const TeamControl: React.FC<TeamControlProps> = ({
                 />
               </div>
               <div>
-                <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-900'}`}>{tTeam.name}</label>
+                <label className={`text-[10px] font-black uppercase block mb-1 mr-1 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>{tTeam.name}</label>
                 <input 
                   type="text" 
                   value={newName} 
@@ -447,6 +459,11 @@ export const TeamControl: React.FC<TeamControlProps> = ({
                   className={`w-full p-3 rounded-xl border-2 font-black outline-none ${isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'}`} 
                 />
               </div>
+              {addError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-500 dark:text-rose-300 text-xs font-black">
+                  {addError}
+                </div>
+              )}
             </div>
             
             <div className="flex gap-3 mt-8">

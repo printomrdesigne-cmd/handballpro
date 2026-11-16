@@ -1,14 +1,17 @@
 import { MatchState, MatchEvent, SanctionType, AppLanguage } from '../types.ts';
+import { getContrastTextColor } from './colorContrast.ts';
 
 /**
  * Generates and downloads a rich, beautifully styled Excel spreadsheet (.xls)
  * featuring colored headers, team colors, player breakdown, match events log,
- * and statistical analysis with full Arabic RTL support.
+ * and statistical analysis with A4 portrait print setup and full Arabic RTL support.
  */
 export const exportMatchToExcel = (match: MatchState, lang: AppLanguage = 'ar') => {
   const isRtl = lang === 'ar';
   const homeColor = match.homeTeam.color || '#2563eb';
   const awayColor = match.awayTeam.color || '#059669';
+  const homeHeaderText = getContrastTextColor(homeColor);
+  const awayHeaderText = getContrastTextColor(awayColor);
 
   // Compute stats
   const homeGoals = match.score.home + (match.score.homePenalties || 0);
@@ -47,7 +50,14 @@ export const exportMatchToExcel = (match: MatchState, lang: AppLanguage = 'ar') 
             <x:ExcelWorksheet>
               <x:Name>${lang === 'ar' ? 'تقرير وتحليل المقابلة' : 'Rapport du Match'}</x:Name>
               <x:WorksheetOptions>
-                <x:DisplayRightToLeft/>
+                ${isRtl ? '<x:DisplayRightToLeft/>' : ''}
+                <x:FitToPage/>
+                <x:Print>
+                  <x:ValidPrinterInfo/>
+                  <x:PaperSizeIndex>9</x:PaperSizeIndex>
+                  <x:FitWidth>1</x:FitWidth>
+                  <x:FitHeight>0</x:FitHeight>
+                </x:Print>
               </x:WorksheetOptions>
             </x:ExcelWorksheet>
           </x:ExcelWorksheets>
@@ -55,17 +65,18 @@ export const exportMatchToExcel = (match: MatchState, lang: AppLanguage = 'ar') 
       </xml>
       <![endif]-->
       <style>
-        body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; margin: 20px; }
-        .main-title { background-color: #0f172a; color: #ffffff; font-size: 18pt; font-weight: bold; text-align: center; padding: 12px; }
-        .sub-title { background-color: #334155; color: #f8fafc; font-size: 11pt; text-align: center; padding: 6px; }
-        .section-title { background-color: #e2e8f0; color: #0f172a; font-size: 13pt; font-weight: bold; padding: 8px; border-bottom: 2px solid #94a3b8; }
+        @page { size: A4 portrait; margin: 0.4in; }
+        body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; margin: 12px; }
+        .main-title { background-color: #0f172a; color: #ffffff; font-size: 16pt; font-weight: bold; text-align: center; padding: 12px; }
+        .sub-title { background-color: #334155; color: #f8fafc; font-size: 10.5pt; text-align: center; padding: 6px; }
+        .section-title { background-color: #e2e8f0; color: #0f172a; font-size: 12pt; font-weight: bold; padding: 8px; border-bottom: 2px solid #94a3b8; }
         
-        table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+        table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
         th { background-color: #1e293b; color: #ffffff; font-weight: bold; font-size: 10pt; text-align: center; padding: 8px; border: 1px solid #64748b; }
         td { font-size: 9.5pt; text-align: center; padding: 6px; border: 1px solid #cbd5e1; }
         
-        .home-header { background-color: ${homeColor}; color: #ffffff; font-weight: bold; font-size: 12pt; text-align: center; }
-        .away-header { background-color: ${awayColor}; color: #ffffff; font-weight: bold; font-size: 12pt; text-align: center; }
+        .home-header { background-color: ${homeColor}; color: ${homeHeaderText}; font-weight: bold; font-size: 12pt; text-align: center; }
+        .away-header { background-color: ${awayColor}; color: ${awayHeaderText}; font-weight: bold; font-size: 12pt; text-align: center; }
         .score-box { background-color: #047857; color: #ffffff; font-size: 16pt; font-weight: bold; text-align: center; }
         
         .kpi-title { background-color: #f1f5f9; font-weight: bold; color: #475569; }
@@ -258,7 +269,7 @@ export const exportMatchToExcel = (match: MatchState, lang: AppLanguage = 'ar') 
       <!-- 6. CHRONOLOGICAL MATCH EVENTS LOG -->
       <table>
         <tr>
-          <td colspan="5" class="section-title">
+          <td colspan="4" class="section-title">
             ${lang === 'ar' ? '⏱️ سجل أحداث المباراة الزمني المفصل' : 'Journal Chronologique des Événements'}
           </td>
         </tr>

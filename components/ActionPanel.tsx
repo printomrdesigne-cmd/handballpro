@@ -92,7 +92,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
 
   if (!selectedTarget) {
     return (
-      <div className={`w-full p-2.5 sm:p-4 rounded-2xl sm:rounded-3xl border text-center transition-colors ${isDarkMode ? 'bg-slate-900/50 border-slate-800 text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+      <div className={`w-full p-2.5 sm:p-4 rounded-2xl sm:rounded-3xl border text-center transition-colors ${isDarkMode ? 'bg-slate-900/70 border-slate-800 text-slate-300' : 'bg-slate-100/80 border-slate-200 text-slate-600'}`}>
         <p className="text-[10px] sm:text-xs font-bold">
           {lang === 'ar' 
             ? 'حدد رقم اللاعب ثم اضغط على لوحة الأهداف لتسجيل الهدف (أو اضغط مطولاً على رقم اللاعب لإلغاء هدف)' 
@@ -183,7 +183,7 @@ export const ActionPanel: React.FC<ActionPanelProps> = ({
           SanctionType.TWO_MINUTES, 
           suspensionText, 
           <div className="text-sm sm:text-lg font-black leading-none">{suspensionLabel}</div>, 
-          'bg-slate-900 border-slate-700 text-white',
+          isDarkMode ? 'bg-slate-800 border-slate-600 text-white hover:bg-slate-700' : 'bg-slate-900 border-slate-700 text-white hover:bg-slate-800',
           canTwoMin
         )}
 

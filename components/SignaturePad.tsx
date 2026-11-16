@@ -5,9 +5,10 @@ interface SignaturePadProps {
   title: string;
   onSave: (dataUrl: string) => void;
   onClose: () => void;
+  isDarkMode?: boolean;
 }
 
-export const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose }) => {
+export const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClose, isDarkMode = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasDrawn, setHasDrawn] = useState(false);
@@ -19,9 +20,9 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClo
       canvas.height = canvas.offsetHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.4;
         ctx.lineCap = 'round';
-        ctx.strokeStyle = '#000000';
+        ctx.strokeStyle = '#0f172a';
       }
     }
   }, []);
@@ -86,14 +87,14 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClo
   };
 
   return (
-    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white w-full max-w-md rounded-2xl p-4 shadow-2xl flex flex-col gap-4">
-        <div className="flex justify-between items-center border-b pb-2">
-            <h3 className="font-black text-lg text-black">{title}</h3>
-            <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full text-black"><X /></button>
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className={`w-full max-w-md rounded-2xl p-5 shadow-2xl flex flex-col gap-4 border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`}>
+        <div className={`flex justify-between items-center border-b pb-3 ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+            <h3 className="font-black text-lg">{title}</h3>
+            <button onClick={onClose} className={`p-1.5 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-700'}`}><X size={18} /></button>
         </div>
         
-        <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 h-48 relative touch-none overflow-hidden">
+        <div className="border-2 border-dashed border-slate-300 rounded-xl bg-white h-48 relative touch-none overflow-hidden shadow-inner">
             <canvas 
                 ref={canvasRef}
                 className="w-full h-full cursor-crosshair"
@@ -109,10 +110,10 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({ title, onSave, onClo
         </div>
 
         <div className="flex gap-2">
-            <button onClick={clear} className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 flex items-center justify-center gap-2">
+            <button onClick={clear} className={`flex-1 py-3 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors ${isDarkMode ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
                 <Eraser size={18} /> مسح
             </button>
-            <button onClick={handleSave} className="flex-[2] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
+            <button onClick={handleSave} className="flex-[2] py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-500 flex items-center justify-center gap-2 shadow-lg shadow-blue-500/30">
                 <Check size={18} /> حفظ التوقيع
             </button>
         </div>

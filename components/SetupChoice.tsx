@@ -1,6 +1,6 @@
 import React from 'react';
-import { ScheduledMatch, AppLanguage } from '../types.ts';
-import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, Sparkles, CheckCircle2, Crown, Ban } from 'lucide-react';
+import { ScheduledMatch, AppLanguage, SubscriberFeaturesConfig, DEFAULT_SUBSCRIBER_FEATURES } from '../types.ts';
+import { Calendar, Plus, Clock, MapPin, ChevronLeft, ChevronRight, Lock, CheckCircle2, Crown, Ban } from 'lucide-react';
 import { translations } from '../utils/translations.ts';
 import { PWAInstallButton } from './PWAInstallButton.tsx';
 
@@ -14,6 +14,7 @@ interface SetupChoiceProps {
   isPro?: boolean;
   isCentralManager?: boolean;
   subscriberStats?: { total: number; active: number; closed: number };
+  effectiveFeatures?: SubscriberFeaturesConfig;
   isDarkMode: boolean;
   lang?: AppLanguage;
 }
@@ -28,12 +29,15 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
   isPro = false,
   isCentralManager = false,
   subscriberStats,
+  effectiveFeatures = DEFAULT_SUBSCRIBER_FEATURES,
   isDarkMode,
   lang = 'ar'
 }) => {
   const t = translations[lang];
   const isRtl = lang === 'ar';
   const ArrowIcon = isRtl ? ChevronLeft : ChevronRight;
+  const canNewMatch = isCentralManager || effectiveFeatures.newMatch;
+  const canSchedule = isCentralManager || effectiveFeatures.scheduleManager;
 
   return (
     <div className="flex flex-col gap-6 py-4" dir={isRtl ? 'rtl' : 'ltr'}>
@@ -99,7 +103,7 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
               </div>
               <div>
                 <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 mb-1">
-                  <span>خاص بالمسير المركزي (printomrdesigne@gmail.com)</span>
+                  <span>خاص بالمسير المركزي</span>
                 </div>
                 <h3 className="text-lg sm:text-xl font-black">
                   إحصائيات المنخرطين وتفعيل / غلق الحسابات
@@ -132,18 +136,26 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Option: Manual Setup */}
         <button 
-          onClick={() => onChoice()}
-          className={`group relative p-8 rounded-[2.5rem] border-2 transition-all duration-300 flex flex-col items-center text-center gap-4 hover:scale-[1.02] hover:shadow-2xl ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-blue-500' : 'bg-white border-slate-100 hover:border-blue-400'}`}
+          onClick={() => canNewMatch && onChoice()}
+          disabled={!canNewMatch}
+          className={`group relative p-8 rounded-[2.5rem] border-2 transition-all duration-300 flex flex-col items-center text-center gap-4 ${
+            canNewMatch ? 'hover:scale-[1.02] hover:shadow-2xl cursor-pointer' : 'opacity-55 cursor-not-allowed'
+          } ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-blue-500' : 'bg-white border-slate-100 hover:border-blue-400'}`}
         >
           <div className="w-20 h-20 rounded-3xl bg-blue-600 flex items-center justify-center text-white shadow-xl shadow-blue-600/20 group-hover:rotate-6 transition-transform">
-            <Plus size={40} strokeWidth={3} />
+            {canNewMatch ? <Plus size={40} strokeWidth={3} /> : <Lock size={34} />}
           </div>
           <div>
             <h3 className="text-xl font-black mb-1">{t.manualSetupTitle}</h3>
             <p className={`text-xs font-bold px-4 ${isDarkMode ? 'text-slate-500' : 'text-slate-700'}`}>{t.manualSetupDesc}</p>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            {currentUser && isPro ? (
+            {!canNewMatch ? (
+              <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-full font-black text-xs bg-rose-500/15 text-rose-600 border border-rose-500/30">
+                <Lock size={12} />
+                <span>معطلة من طرف المسير المركزي</span>
+              </span>
+            ) : currentUser && isPro ? (
               <span className={`inline-flex items-center gap-1.5 px-6 py-2 rounded-full font-black text-xs transition-colors ${isDarkMode ? 'bg-slate-800 text-blue-400' : 'bg-slate-50 text-blue-600'}`}>
                 <CheckCircle2 size={14} />
                 <span>{t.startFromScratch}</span>
@@ -163,26 +175,35 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
         </button>
 
         {/* Option: Scheduled Matches */}
-        <div className={`flex flex-col p-8 rounded-[2.5rem] border-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+        <div className={`flex flex-col p-8 rounded-[2.5rem] border-2 ${!canSchedule ? 'opacity-60' : ''} ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
           <div className="flex items-center gap-4 mb-6">
             <div className="w-12 h-12 rounded-2xl bg-amber-500 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-              <Calendar size={24} strokeWidth={3} />
+              {canSchedule ? <Calendar size={24} strokeWidth={3} /> : <Lock size={22} />}
             </div>
             <div className="text-start">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-xl font-black mb-0.5">{t.scheduledTitle}</h3>
-                {!isPro && (
+                {!canSchedule ? (
+                  <span className="text-[10px] font-black bg-rose-500/15 text-rose-600 px-2 py-0.5 rounded flex items-center gap-1">
+                    <Lock size={10} /> معطلة حالياً
+                  </span>
+                ) : !isPro ? (
                   <span className="text-[10px] font-black bg-amber-500/15 text-amber-600 px-2 py-0.5 rounded flex items-center gap-1">
                     <Lock size={10} /> {t.proRequired}
                   </span>
-                )}
+                ) : null}
               </div>
               <p className={`text-[10px] font-bold ${isDarkMode ? 'text-slate-500' : 'text-slate-700'}`}>{t.scheduledDesc}</p>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto max-h-64 pr-1 custom-scrollbar space-y-3">
-            {schedule.length === 0 ? (
+            {!canSchedule ? (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 py-8 gap-2 text-center">
+                <Lock size={30} opacity={0.4} />
+                <p className="text-xs font-bold">ميزة المباريات المبرمجة مخفية حالياً من طرف المسير المركزي</p>
+              </div>
+            ) : schedule.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 py-8 gap-2">
                 <Clock size={32} opacity={0.3} />
                 <p className="text-xs font-bold">{t.noScheduledMatches}</p>
@@ -192,7 +213,7 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
                 <button
                   key={match.id}
                   onClick={() => onChoice(match)}
-                  className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all group hover:scale-[1.02] ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-amber-500' : 'bg-slate-50 border-slate-100 hover:border-amber-400'}`}
+                  className={`w-full p-4 rounded-2xl border-2 flex items-center justify-between transition-all group hover:scale-[1.02] cursor-pointer ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-amber-500' : 'bg-slate-50 border-slate-100 hover:border-amber-400'}`}
                 >
                   <div className="flex-1 text-start">
                     <div className="flex items-center gap-2 mb-1">
@@ -210,7 +231,7 @@ export const SetupChoice: React.FC<SetupChoiceProps> = ({
             )}
           </div>
           
-          {schedule.length > 0 && (
+          {canSchedule && schedule.length > 0 && (
             <p className={`text-center mt-4 text-[9px] font-black uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
               {t.selectScheduledPrompt}
             </p>

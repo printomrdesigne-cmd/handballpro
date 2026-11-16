@@ -1,28 +1,158 @@
 {
   "entities": {
     "User": {
-      "path": "users/{userId}",
-      "fields": {
-        "email": { "type": "string" },
-        "displayName": { "type": "string" },
-        "phone": { "type": "string" },
-        "clubName": { "type": "string" },
-        "isActive": { "type": "boolean" },
-        "activationCode": { "type": "string" },
-        "isPro": { "type": "boolean" },
-        "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" }
-      }
+      "title": "User",
+      "description": "Registered subscriber or central manager account with subscription status, expiration date, activation code, and optional per-user feature overrides.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 200
+        },
+        "displayName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "clubName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "isPro": {
+          "type": "boolean"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "isBlocked": {
+          "type": "boolean"
+        },
+        "blockedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "blockReason": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "activationCode": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "planId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "licenseKey": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "subscriptionPrice": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "subscriptionExpiresAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "renewedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "managerNotes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "enabledFeatures": {
+          "type": "object",
+          "description": "Per-subscriber boolean overrides keyed by SubscriptionFeatureKey."
+        },
+        "createdAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["uid", "email", "displayName", "isActive"]
     },
     "UserMatch": {
-      "path": "users/{userId}/matches/{matchId}",
-      "fields": {
-        "userId": { "type": "string" },
-        "id": { "type": "string" },
-        "details": { "type": "string" },
-        "score": { "type": "string" },
-        "updatedAt": { "type": "string" }
-      }
+      "title": "UserMatch",
+      "description": "Saved handball match belonging to a specific user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "details": {
+          "type": "string",
+          "maxLength": 20000
+        },
+        "score": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64
+        }
+      },
+      "required": ["userId", "id"]
+    },
+    "GlobalFeaturesConfig": {
+      "title": "GlobalFeaturesConfig",
+      "description": "Central Manager global feature toggles controlling which features are visible and enabled for subscribers.",
+      "type": "object",
+      "properties": {
+        "features": {
+          "type": "object",
+          "description": "Map of SubscriptionFeatureKey boolean flags."
+        },
+        "updatedAt": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "updatedBy": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": ["features", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Subscriber profiles, subscription status, activation codes, and per-user feature overrides."
+    },
+    "/users/{userId}/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/UserMatch" },
+      "description": "Archived or saved handball matches owned by a user."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "#/entities/GlobalFeaturesConfig" },
+      "description": "Global application feature flags document (subscriber_features) managed by the Central Manager."
     }
   }
 }

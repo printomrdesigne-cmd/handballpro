@@ -1,7 +1,7 @@
 import React from 'react';
-import { MatchState, ScheduledMatch, AppLanguage } from '../types.ts';
-import { Trophy, Calendar, History, Plus, Play, FileText, Users, Crown, ShieldCheck, Zap, Activity, BarChart3, ArrowUpRight, Clock, Award, CheckCircle2, Sparkles } from 'lucide-react';
-import { translations } from '../utils/translations.ts';
+import { MatchState, ScheduledMatch, AppLanguage, SubscriberFeaturesConfig, DEFAULT_SUBSCRIBER_FEATURES } from '../types.ts';
+import { getSafeTeamTextColor } from '../utils/colorContrast.ts';
+import { Trophy, Calendar, History, Plus, Play, Users, Crown, Zap, Activity, BarChart3, ArrowUpRight, Award, Sparkles, Lock, Sliders } from 'lucide-react';
 
 interface HomeDashboardProps {
   match: MatchState | null;
@@ -10,11 +10,14 @@ interface HomeDashboardProps {
   currentUser: any;
   isPro: boolean;
   isCentralManager: boolean;
-  subscriberStats?: { total: number; active: number; closed: number };
+  subscriberStats?: { total: number; active: number; closed: number; expired?: number };
+  effectiveFeatures?: SubscriberFeaturesConfig;
   onNavigate: (view: 'home' | 'setup' | 'setup_choice' | 'match' | 'sheet' | 'archive' | 'admin_schedule') => void;
+  onSelectMatch?: (m: MatchState) => void;
   onNewMatch: () => void;
   onOpenAuth: () => void;
   onOpenSubscription: () => void;
+  onOpenFeatureControls?: () => void;
   onOpenEvents?: () => void;
   onOpenAnalysis?: () => void;
   isDarkMode: boolean;
@@ -29,17 +32,25 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   isPro,
   isCentralManager,
   subscriberStats,
+  effectiveFeatures = DEFAULT_SUBSCRIBER_FEATURES,
   onNavigate,
+  onSelectMatch,
   onNewMatch,
   onOpenAuth,
   onOpenSubscription,
+  onOpenFeatureControls,
   onOpenEvents,
   onOpenAnalysis,
   isDarkMode,
   lang = 'ar'
 }) => {
-  const t = translations[lang];
   const isRtl = lang === 'ar';
+
+  const canNewMatch = isCentralManager || effectiveFeatures.newMatch;
+  const canLiveMatch = isCentralManager || effectiveFeatures.liveMatch;
+  const canArchive = isCentralManager || effectiveFeatures.archive;
+  const canAnalysis = isCentralManager || effectiveFeatures.matchAnalysis;
+  const canEvents = isCentralManager || effectiveFeatures.eventsLog;
 
   // Compute statistics
   const totalMatchesArchived = archive.length;
@@ -64,7 +75,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-black tracking-wide border border-white/20">
               <Sparkles size={14} className="text-amber-300" />
-              <span>{isCentralManager ? '👑 لوحة تحكم المسير المركزي' : isPro ? '★ حساب مشترك مفعل PRO' : '⚡ لوحة القيادة الرئيسية'}</span>
+              <span>{isCentralManager ? '👑 لوحة تحكم المسير المركزي' : isPro ? '★ حساب مشترك مفعل' : '⚡ لوحة القيادة الرئيسية'}</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
               {currentUser ? `${lang === 'ar' ? 'مرحباً،' : 'Bienvenue,'} ${currentUser.displayName || currentUser.email}` : (lang === 'ar' ? 'مرحباً بك في HandManager PRO' : 'Bienvenue sur HandManager PRO')}
@@ -95,13 +106,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </button>
             )}
 
-            <button
-              onClick={onNewMatch}
-              className="px-6 py-3 rounded-2xl bg-white text-slate-900 hover:bg-slate-100 font-black text-xs shadow-xl transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Plus size={16} className="text-blue-600" />
-              <span>{lang === 'ar' ? 'مباراة جديدة' : 'Nouveau Match'}</span>
-            </button>
+            {canNewMatch && (
+              <button
+                onClick={onNewMatch}
+                className="px-6 py-3 rounded-2xl bg-white text-slate-900 hover:bg-slate-100 font-black text-xs shadow-xl transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Plus size={16} className="text-blue-600" />
+                <span>{lang === 'ar' ? 'مباراة جديدة' : 'Nouveau Match'}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -125,15 +138,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 </span>
               </div>
               <h3 className="text-base sm:text-lg font-black mt-1">
-                <span style={{ color: match.homeTeam.color }}>{match.homeTeam.name}</span>
+                <span style={{ color: getSafeTeamTextColor(match.homeTeam.color, isDarkMode) }}>{match.homeTeam.name}</span>
                 <span className="mx-2 font-mono text-xl">({match.score.home} - {match.score.away})</span>
-                <span style={{ color: match.awayTeam.color }}>{match.awayTeam.name}</span>
+                <span style={{ color: getSafeTeamTextColor(match.awayTeam.color, isDarkMode) }}>{match.awayTeam.name}</span>
               </h3>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            {onOpenAnalysis && (
+          <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            {onOpenAnalysis && canAnalysis && (
               <button
                 onClick={onOpenAnalysis}
                 className="flex-1 md:flex-none px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
@@ -144,7 +157,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </button>
             )}
 
-            {onOpenEvents && (
+            {onOpenEvents && canEvents && (
               <button
                 onClick={onOpenEvents}
                 className="flex-1 md:flex-none px-4 py-3 rounded-xl border border-emerald-500/40 hover:bg-emerald-500/10 font-black text-xs transition flex items-center justify-center gap-1.5 cursor-pointer text-emerald-700 dark:text-emerald-300"
@@ -155,13 +168,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               </button>
             )}
 
-            <button
-              onClick={() => onNavigate('match')}
-              className="flex-1 md:flex-none px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Play size={16} />
-              <span>{lang === 'ar' ? 'استئناف المباراة' : 'Reprendre le match'}</span>
-            </button>
+            {canLiveMatch && (
+              <button
+                onClick={() => onNavigate('match')}
+                className="flex-1 md:flex-none px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Play size={16} />
+                <span>{lang === 'ar' ? 'استئناف المباراة' : 'Reprendre le match'}</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -172,29 +187,39 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           isDarkMode ? 'bg-amber-950/30 border-amber-500/40' : 'bg-amber-50 border-amber-300 text-slate-900'
         }`}>
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shrink-0">
               <Crown size={24} />
             </div>
             <div>
-              <h3 className="font-black text-sm sm:text-base">{lang === 'ar' ? 'حالة المشتركين والمنخرطين' : 'Statistiques des abonnés'}</h3>
+              <h3 className="font-black text-sm sm:text-base">{lang === 'ar' ? 'حالة المشتركين وتفعيل الميزات' : 'Gestion des abonnés & fonctionnalités'}</h3>
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                {lang === 'ar' ? 'إجمالي المنخرطين في النظام:' : 'Total abonnés:'} <strong className="text-amber-600 dark:text-amber-400">{subscriberStats.total}</strong> | {lang === 'ar' ? 'المفعلين:' : 'Actifs:'} <strong className="text-emerald-600">{subscriberStats.active}</strong> | {lang === 'ar' ? 'المغلقين:' : 'Fermés:'} <strong className="text-rose-600">{subscriberStats.closed}</strong>
+                {lang === 'ar' ? 'إجمالي المنخرطين:' : 'Total:'} <strong className="text-amber-600 dark:text-amber-400">{subscriberStats.total}</strong> | {lang === 'ar' ? 'المفعلين:' : 'Actifs:'} <strong className="text-emerald-600">{subscriberStats.active}</strong> | {lang === 'ar' ? 'المغلقين:' : 'Fermés:'} <strong className="text-rose-600">{subscriberStats.closed}</strong>
               </p>
             </div>
           </div>
-          <button
-            onClick={onOpenSubscription}
-            className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md transition cursor-pointer flex items-center gap-1.5 shrink-0"
-          >
-            <Crown size={15} />
-            <span>{lang === 'ar' ? 'إدارة وتفعيل حسابات المشتركين' : 'Gérer les abonnés'}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {onOpenFeatureControls && (
+              <button
+                onClick={onOpenFeatureControls}
+                className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Sliders size={15} />
+                <span>{lang === 'ar' ? 'تحكم في ميزات المشتركين' : 'Contrôle des fonctionnalités'}</span>
+              </button>
+            )}
+            <button
+              onClick={onOpenSubscription}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md transition cursor-pointer flex items-center gap-1.5"
+            >
+              <Crown size={15} />
+              <span>{lang === 'ar' ? 'إدارة المشتركين' : 'Gérer les abonnés'}</span>
+            </button>
+          </div>
         </div>
       )}
 
       {/* Statistics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Stat 1: Archived Matches */}
         <div className={`p-5 rounded-[2rem] border-2 shadow-sm transition-all hover:scale-[1.02] ${
           isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'
         }`}>
@@ -212,7 +237,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </p>
         </div>
 
-        {/* Stat 2: Active Match Status */}
         <div className={`p-5 rounded-[2rem] border-2 shadow-sm transition-all hover:scale-[1.02] ${
           isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'
         }`}>
@@ -236,7 +260,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </p>
         </div>
 
-        {/* Stat 3: Total Goals Scored */}
         <div className={`p-5 rounded-[2rem] border-2 shadow-sm transition-all hover:scale-[1.02] ${
           isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'
         }`}>
@@ -254,7 +277,6 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </p>
         </div>
 
-        {/* Stat 4: Scheduled Matches */}
         <div className={`p-5 rounded-[2rem] border-2 shadow-sm transition-all hover:scale-[1.02] ${
           isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'
         }`}>
@@ -283,65 +305,94 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Action 1: New Match */}
           <button
-            onClick={onNewMatch}
-            className={`p-6 rounded-[2.2rem] border-2 text-start transition-all duration-200 flex flex-col justify-between group hover:scale-[1.02] hover:shadow-xl ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-blue-500' : 'bg-white border-slate-100 hover:border-blue-400'
-            }`}
+            onClick={canNewMatch ? onNewMatch : undefined}
+            disabled={!canNewMatch}
+            className={`p-6 rounded-[2.2rem] border-2 text-start transition-all duration-200 flex flex-col justify-between group ${
+              canNewMatch
+                ? 'hover:scale-[1.02] hover:shadow-xl cursor-pointer'
+                : 'opacity-50 cursor-not-allowed'
+            } ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-blue-500' : 'bg-white border-slate-100 hover:border-blue-400'}`}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30 group-hover:scale-110 transition-transform">
-                <Plus size={28} strokeWidth={3} />
+                {canNewMatch ? <Plus size={28} strokeWidth={3} /> : <Lock size={24} />}
               </div>
-              <ArrowUpRight size={20} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+              {canNewMatch ? (
+                <ArrowUpRight size={20} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+              ) : (
+                <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full">معطلة</span>
+              )}
             </div>
             <div>
               <h3 className="text-lg font-black mb-1">{lang === 'ar' ? 'إعداد وبدء مباراة جديدة' : 'Nouveau Match'}</h3>
               <p className={`text-xs font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                {lang === 'ar' ? 'تحديد الفرق، اللوائح، الحكام والتوقيت الرسمي.' : 'Configurer les équipes et arbitres.'}
+                {canNewMatch
+                  ? (lang === 'ar' ? 'تحديد الفرق، اللوائح، الحكام والتوقيت الرسمي.' : 'Configurer les équipes et arbitres.')
+                  : (lang === 'ar' ? 'تم إخفاء هذه الميزة من طرف المسير المركزي' : 'Désactivé par le gérant')}
               </p>
             </div>
           </button>
 
           {/* Action 2: Current Match / Scoreboard */}
           <button
-            onClick={() => onNavigate(match ? 'match' : 'setup_choice')}
-            className={`p-6 rounded-[2.2rem] border-2 text-start transition-all duration-200 flex flex-col justify-between group hover:scale-[1.02] hover:shadow-xl ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-emerald-500' : 'bg-white border-slate-100 hover:border-emerald-400'
-            }`}
+            onClick={() => canLiveMatch && onNavigate(match ? 'match' : 'setup_choice')}
+            disabled={!canLiveMatch}
+            className={`p-6 rounded-[2.2rem] border-2 text-start transition-all duration-200 flex flex-col justify-between group ${
+              canLiveMatch
+                ? 'hover:scale-[1.02] hover:shadow-xl cursor-pointer'
+                : 'opacity-50 cursor-not-allowed'
+            } ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-emerald-500' : 'bg-white border-slate-100 hover:border-emerald-400'}`}
           >
             <div className="flex items-center justify-between mb-6">
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform ${
-                match ? 'bg-emerald-600 shadow-emerald-600/30' : 'bg-slate-700 shadow-slate-700/30'
+                match && canLiveMatch ? 'bg-emerald-600 shadow-emerald-600/30' : 'bg-slate-700 shadow-slate-700/30'
               }`}>
-                <Play size={28} strokeWidth={3} />
+                {canLiveMatch ? <Play size={28} strokeWidth={3} /> : <Lock size={24} />}
               </div>
-              <ArrowUpRight size={20} className="text-slate-400 group-hover:text-emerald-600 transition-colors" />
+              {canLiveMatch ? (
+                <ArrowUpRight size={20} className="text-slate-400 group-hover:text-emerald-600 transition-colors" />
+              ) : (
+                <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full">معطلة</span>
+              )}
             </div>
             <div>
-              <h3 className="text-lg font-black mb-1">{lang === 'ar' ? 'تسيير المقابلة الحالية' : 'Match Actل'}</h3>
+              <h3 className="text-lg font-black mb-1">{lang === 'ar' ? 'تسيير المقابلة الحالية' : 'Match Actuel'}</h3>
               <p className={`text-xs font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                {match ? `${match.homeTeam.name} vs ${match.awayTeam.name}` : (lang === 'ar' ? 'لا توجد مقابلة نشطة حالياً' : 'Aucun match actif')}
+                {!canLiveMatch
+                  ? (lang === 'ar' ? 'تم إخفاء هذه الميزة من طرف المسير المركزي' : 'Désactivé par le gérant')
+                  : match
+                  ? `${match.homeTeam.name} vs ${match.awayTeam.name}`
+                  : (lang === 'ar' ? 'لا توجد مقابلة نشطة حالياً' : 'Aucun match actif')}
               </p>
             </div>
           </button>
 
           {/* Action 3: Archive */}
           <button
-            onClick={() => onNavigate('archive')}
-            className={`p-6 rounded-[2.2rem] border-2 text-start transition-all duration-200 flex flex-col justify-between group hover:scale-[1.02] hover:shadow-xl ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-purple-500' : 'bg-white border-slate-100 hover:border-purple-400'
-            }`}
+            onClick={() => canArchive && onNavigate('archive')}
+            disabled={!canArchive}
+            className={`p-6 rounded-[2.2rem] border-2 text-start transition-all duration-200 flex flex-col justify-between group ${
+              canArchive
+                ? 'hover:scale-[1.02] hover:shadow-xl cursor-pointer'
+                : 'opacity-50 cursor-not-allowed'
+            } ${isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-purple-500' : 'bg-white border-slate-100 hover:border-purple-400'}`}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="w-14 h-14 rounded-2xl bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-600/30 group-hover:scale-110 transition-transform">
-                <History size={28} strokeWidth={2.5} />
+                {canArchive ? <History size={28} strokeWidth={2.5} /> : <Lock size={24} />}
               </div>
-              <ArrowUpRight size={20} className="text-slate-400 group-hover:text-purple-600 transition-colors" />
+              {canArchive ? (
+                <ArrowUpRight size={20} className="text-slate-400 group-hover:text-purple-600 transition-colors" />
+              ) : (
+                <span className="text-[10px] font-black text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full">معطلة</span>
+              )}
             </div>
             <div>
               <h3 className="text-lg font-black mb-1">{lang === 'ar' ? 'أرشيف المباريات والنتائج' : 'Archives'}</h3>
               <p className={`text-xs font-bold ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                {lang === 'ar' ? `${totalMatchesArchived} مباراة مؤرشفة ومسجلة.` : `${totalMatchesArchived} matchs archivés.`}
+                {canArchive
+                  ? (lang === 'ar' ? `${totalMatchesArchived} مباراة مؤرشفة ومسجلة.` : `${totalMatchesArchived} matchs archivés.`)
+                  : (lang === 'ar' ? 'تم إخفاء هذه الميزة من طرف المسير المركزي' : 'Désactivé par le gérant')}
               </p>
             </div>
           </button>
@@ -349,7 +400,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       </div>
 
       {/* Recent Matches Archive Preview */}
-      {archive.length > 0 && (
+      {archive.length > 0 && canArchive && (
         <div className={`p-6 rounded-[2.5rem] border-2 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -369,7 +420,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <div
                 key={m.id}
                 onClick={() => {
-                  onNavigate('match');
+                  if (onSelectMatch && canLiveMatch) {
+                    onSelectMatch(m);
+                  } else {
+                    onNavigate('archive');
+                  }
                 }}
                 className={`p-4 rounded-2xl border flex items-center justify-between transition-all cursor-pointer hover:scale-[1.01] ${
                   isDarkMode ? 'bg-slate-800/60 border-slate-700/80 hover:border-blue-500' : 'bg-slate-50 border-slate-200 hover:border-blue-400'
@@ -383,7 +438,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     <div className="font-black text-sm">
                       {m.homeTeam.name} <span className="text-slate-400 font-normal italic mx-1">vs</span> {m.awayTeam.name}
                     </div>
-                    <div className="text-[10px] font-bold text-slate-400 flex items-center gap-2 mt-0.5">
+                    <div className={`text-[10px] font-bold flex items-center gap-2 mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                       <span>{m.details.date || 'اليوم'}</span>
                       <span>•</span>
                       <span>{m.details.categorie || 'عام'}</span>
@@ -404,3 +459,4 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
     </div>
   );
 };
+

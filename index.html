@@ -86,7 +86,12 @@
                  str.indexOf('@firebase/firestore') !== -1 || 
                  str.indexOf('Could not reach Cloud Firestore') !== -1 ||
                  str.indexOf('code=unavailable') !== -1 ||
-                 str.indexOf('offline mode until it is able to successfully connect') !== -1;
+                 str.indexOf('offline mode until it is able to successfully connect') !== -1 ||
+                 str.indexOf('cssRules') !== -1 ||
+                 str.indexOf('remote stylesheet') !== -1 ||
+                 str.indexOf('CSSStyleSheet') !== -1 ||
+                 str.indexOf('Error loading svg') !== -1 ||
+                 str.indexOf('data:image/svg+xml') !== -1;
         };
 
         var origWarn = console.warn;
@@ -142,6 +147,21 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png">
     <link rel="shortcut icon" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+      };
+      (function() {
+        try {
+          var saved = localStorage.getItem('handball_dark_mode');
+          var isDark = saved !== null
+            ? saved === 'true'
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', isDark);
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -149,7 +169,6 @@
     <style>
         body {
             font-family: 'Cairo', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #f8fafc;
         }
     </style>
 <script type="importmap">
